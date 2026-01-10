@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Upload, Users, Calendar, ArrowRight, Download, Eye, EyeOff, Ban, X, Plus, Trash2, ChevronDown } from "lucide-react";
+import { Upload, Users, Calendar, ArrowRight, Download, Eye, EyeOff, Ban, X, Plus, Trash2, ChevronDown, Map } from "lucide-react";
 import { AssemblyManager } from "@/lib/scheduler";
 import { AssemblyEntry } from "@/lib/parsers";
+import SeatingMap from "./SeatingMap";
 
 export default function Dashboard() {
     const [manager] = useState(new AssemblyManager());
@@ -24,6 +25,7 @@ export default function Dashboard() {
     // Constraints: Key = classId, Value = Array of forbidden shifts
     const [constraints, setConstraints] = useState<{ [classId: string]: string[] }>({});
     const [showConstraintsModal, setShowConstraintsModal] = useState(false);
+    const [showSeatingMap, setShowSeatingMap] = useState(false);
 
     // For the modal form
     const [selectedConstraintClass, setSelectedConstraintClass] = useState("");
@@ -621,6 +623,15 @@ export default function Dashboard() {
                         📋 Copia
                     </button>
 
+                    <button
+                        onClick={() => setShowSeatingMap(true)}
+                        className="glass-panel hover:bg-white/10"
+                        style={{ padding: '0.5rem 1rem', cursor: 'pointer', display: 'flex', gap: '0.5rem', alignItems: 'center', background: 'rgba(236, 72, 153, 0.1)', borderColor: 'rgba(236, 72, 153, 0.3)', color: '#f9a8d4' }}
+                        title="Mappa Posti Auditorium"
+                    >
+                        <Map size={16} /> Mappa
+                    </button>
+
                     {globalErrors.length > 0 && (
                         <div className="glass-panel" style={{ padding: '0.5rem 1rem', borderColor: '#ef4444', color: '#ef4444' }}>
                             {globalErrors.map((e, i) => <div key={i}>⚠️ {e}</div>)}
@@ -1060,6 +1071,15 @@ export default function Dashboard() {
                         </div>
                     </div>
                 </div>
+            )}
+
+            {/* Seating Map Modal */}
+            {showSeatingMap && (
+                <SeatingMap
+                    shifts={shifts}
+                    selectedShift={Object.keys(shifts).find(s => shifts[s].length > 0) || "Primo turno"}
+                    onClose={() => setShowSeatingMap(false)}
+                />
             )}
         </div>
     );
