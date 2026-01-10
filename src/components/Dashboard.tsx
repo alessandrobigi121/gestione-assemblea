@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Upload, Users, Calendar, ArrowRight, Download, Eye, EyeOff } from "lucide-react";
+import { Upload, Users, Calendar, ArrowRight, Download, Eye, EyeOff, Ban, X, Plus, Trash2 } from "lucide-react";
 import { AssemblyManager } from "@/lib/scheduler";
 import { AssemblyEntry } from "@/lib/parsers";
 
@@ -21,6 +21,14 @@ export default function Dashboard() {
     const [conflictMap, setConflictMap] = useState<{ [classId: string]: string[] }>({});
     const [showUnassigned, setShowUnassigned] = useState(true);
 
+    // Constraints: Key = classId, Value = Array of forbidden shifts
+    const [constraints, setConstraints] = useState<{ [classId: string]: string[] }>({});
+    const [showConstraintsModal, setShowConstraintsModal] = useState(false);
+
+    // For the modal form
+    const [selectedConstraintClass, setSelectedConstraintClass] = useState("");
+    const [selectedConstraintShifts, setSelectedConstraintShifts] = useState<string[]>([]);
+
     // Re-implementing init to ensure state consistency
     useEffect(() => {
         async function init() {
@@ -39,7 +47,7 @@ export default function Dashboard() {
                 const assemblyText = await assemblyRes.text();
                 const teachersText = await teachersRes.text();
 
-                // Load all data into manager // 40c7ea68
+                // Load all data into manager
                 await manager.loadData(scheduleText, assemblyText, teachersText);
 
                 const classes = manager.getClasses();
@@ -95,7 +103,6 @@ export default function Dashboard() {
         // Validate each shift
         Object.keys(shifts).forEach(shiftName => {
             const classIds = shifts[shiftName].map(c => c.classId);
-            // Pass selectedDay to validation // 74ddaa7f
             const errs = manager.validateShift(shiftName, classIds, selectedDay);
             if (errs.length > 0) {
                 newShiftErrors[shiftName] = errs;
@@ -109,10 +116,36 @@ export default function Dashboard() {
         const conflicts = manager.getTeacherConflicts(selectedDay, shiftMap);
 
         setShiftErrors(newShiftErrors);
-        setGlobalErrors([]); // Removed global banner for conflicts as requested
+        setGlobalErrors([]);
         setConflictMap(conflicts);
     }, [shifts, selectedDay, manager, loading]);
 
+    const addConstraint = () => {
+        if (!selectedConstraintClass || selectedConstraintShifts.length === 0) return;
+
+        setConstraints(prev => ({
+            ...prev,
+            [selectedConstraintClass]: selectedConstraintShifts
+        }));
+
+        // Reset form
+        setSelectedConstraintClass("");
+        setSelectedConstraintShifts([]);
+    };
+
+    const removeConstraint = (classId: string) => {
+        const newC = { ...constraints };
+        delete newC[classId];
+        setConstraints(newC);
+    };
+
+    const toggleConstraintShift = (shift: string) => {
+        if (selectedConstraintShifts.includes(shift)) {
+            setSelectedConstraintShifts(prev => prev.filter(s => s !== shift));
+        } else {
+            setSelectedConstraintShifts(prev => [...prev, shift]);
+        }
+    };
 
     const handleDragStart = (e: React.DragEvent, classId: string, source: string) => {
         e.dataTransfer.setData("classId", classId);
@@ -154,7 +187,6 @@ export default function Dashboard() {
     const handleDragOver = (e: React.DragEvent) => e.preventDefault();
 
     const getShiftTime = (shift: string) => {
-        // call manager helper if public or duplicate logic
         if (shift.toLowerCase().includes("primo")) return "8h10";
         if (shift.toLowerCase().includes("secondo")) return "9h10";
         if (shift.toLowerCase().includes("terzo")) return "11h10";
@@ -183,7 +215,8 @@ export default function Dashboard() {
         const data = {
             shifts,
             unassignedClasses,
-            selectedDay
+            selectedDay,
+            constraints
         };
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
         const url = URL.createObjectURL(blob);
@@ -208,6 +241,7 @@ export default function Dashboard() {
                     setShifts(json.shifts);
                     setUnassignedClasses(json.unassignedClasses);
                     if (json.selectedDay) setSelectedDay(json.selectedDay);
+                    if (json.constraints) setConstraints(json.constraints);
                 } else {
                     alert("File non valido");
                 }
@@ -270,6 +304,15 @@ export default function Dashboard() {
                         title="Esporta Configurazione"
                     >
                         <Download size={18} /> Esporta
+                    </button>
+
+                    <button
+                        onClick={() => setShowConstraintsModal(true)}
+                        className="glass-panel hover:bg-white/10"
+                        style={{ padding: '0.5rem 1rem', cursor: 'pointer', display: 'flex', gap: '0.5rem', alignItems: 'center' }}
+                        title="Gestisci Vincoli"
+                    >
+                        <Ban size={18} /> Vincoli
                     </button>
 
                     {globalErrors.length > 0 && (
@@ -354,12 +397,15 @@ export default function Dashboard() {
                                     const conflicts = conflictMap[c.classId] || [];
                                     const hasConflict = conflicts.length > 0;
 
+                                    // Constraint Logic
+                                    const isForbidden = constraints[c.classId]?.includes(shift);
+
                                     // Missing Teacher Check (Red if "Non trovato")
                                     const missingGoing = teachers.going.some(t => t.toLowerCase() === "non trovato");
                                     const missingReturning = teachers.returning.some(t => t.toLowerCase() === "non trovato");
                                     const hasMissing = missingGoing || missingReturning;
 
-                                    const isError = hasConflict || hasMissing;
+                                    const isError = hasConflict || hasMissing || isForbidden;
 
                                     const cardStyle = isError ? {
                                         borderColor: '#ef4444',
@@ -384,6 +430,12 @@ export default function Dashboard() {
                                                 <span>{displayLocation}</span>
                                                 <span>{displayWeek}</span>
                                             </div>
+
+                                            {isForbidden && (
+                                                <div className="text-xs p-1 mt-1 rounded font-bold" style={{ background: '#ef4444', color: 'white', border: '1px solid rgba(255,255,255,0.2)' }}>
+                                                    ⛔ Non disponibile
+                                                </div>
+                                            )}
 
                                             {hasConflict && (
                                                 <div className="text-xs p-1 mt-1 rounded" style={{ background: 'rgba(56, 189, 248, 0.2)', color: '#bae6fd', border: '1px solid rgba(56, 189, 248, 0.4)' }}>
@@ -469,6 +521,84 @@ export default function Dashboard() {
                                 </div>
                             )
                         })}
+                    </div>
+                </div>
+            )}
+            {/* Constraint Modal */}
+            {showConstraintsModal && (
+                <div style={{
+                    position: 'fixed',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    background: 'rgba(0,0,0,0.8)',
+                    zIndex: 100,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                }}>
+                    <div className="glass-panel" style={{ width: '500px', padding: '2rem', background: '#1e293b' }}>
+                        <div className="flex-row justify-between items-center mb-6">
+                            <h2 className="text-2xl">Gestione Vincoli</h2>
+                            <button onClick={() => setShowConstraintsModal(false)}><X /></button>
+                        </div>
+
+                        {/* Add New Constraint */}
+                        <div className="flex-col gap-4 mb-8 p-4 rounded" style={{ background: 'rgba(255,255,255,0.05)' }}>
+                            <h3 className="text-xl">Aggiungi Vincolo</h3>
+
+                            <div className="flex-col gap-2">
+                                <label>Seleziona Classe:</label>
+                                <select
+                                    value={selectedConstraintClass}
+                                    onChange={(e) => setSelectedConstraintClass(e.target.value)}
+                                    style={{ padding: '0.5rem', borderRadius: '0.25rem', background: 'black', color: 'white' }}
+                                >
+                                    <option value="">-- Scegli --</option>
+                                    {[...manager.getClasses()].sort((a, b) => a.classId.localeCompare(b.classId)).map(c => (
+                                        <option key={c.classId} value={c.classId}>{c.classId}</option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            <div className="flex-col gap-2">
+                                <label>Turni Non Disponibili:</label>
+                                <div className="grid grid-cols-2 gap-2">
+                                    {["Primo turno", "Secondo turno", "Terzo turno", "Quarto turno"].map(s => (
+                                        <label key={s} className="flex-row gap-2 items-center cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                checked={selectedConstraintShifts.includes(s)}
+                                                onChange={() => toggleConstraintShift(s)}
+                                            />
+                                            {s}
+                                        </label>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <button onClick={addConstraint} className="btn btn-primary mt-2">
+                                <Plus size={18} /> Aggiungi Vincolo
+                            </button>
+                        </div>
+
+                        {/* List Existing Limits */}
+                        <div className="flex-col gap-2" style={{ maxHeight: '300px', overflowY: 'auto' }}>
+                            <h3 className="text-xl mb-2">Vincoli Attivi ({Object.keys(constraints).length})</h3>
+                            {Object.keys(constraints).length === 0 && <span className="text-sm">Nessun vincolo impostato.</span>}
+
+                            {Object.entries(constraints).map(([cId, shifts]) => (
+                                <div key={cId} className="glass-panel flex-row justify-between items-center p-2" style={{ borderColor: '#ef4444' }}>
+                                    <div>
+                                        <strong>{cId}</strong>: <span className="text-sm text-red-200">{shifts.join(", ")}</span>
+                                    </div>
+                                    <button onClick={() => removeConstraint(cId)} className="text-red-400 hover:text-red-200">
+                                        <Trash2 size={18} />
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
                     </div>
                 </div>
             )}
