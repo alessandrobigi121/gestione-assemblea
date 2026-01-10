@@ -532,73 +532,73 @@ export default function Dashboard() {
                     left: 0,
                     right: 0,
                     bottom: 0,
-                    background: 'rgba(0,0,0,0.6)', // Lighter overlay
-                    backdropFilter: 'blur(8px)', // Global blur
+                    background: 'rgba(0,0,0,0.8)',
+                    backdropFilter: 'blur(8px)',
                     zIndex: 100,
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center'
                 }}>
                     <div className="glass-panel" style={{
-                        width: '600px',
-                        padding: '2rem',
-                        background: 'rgba(30, 41, 59, 0.9)', // More opaque for readability
+                        width: '800px',
+                        padding: '2.5rem',
+                        background: '#1e293b', // Solid dark background for readability
                         border: '1px solid rgba(255,255,255,0.1)',
                         boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
-                        maxHeight: '90vh',
+                        maxHeight: '85vh',
                         display: 'flex',
-                        flexDirection: 'column'
+                        flexDirection: 'column',
+                        borderRadius: '1rem'
                     }}>
-                        <div className="flex-row justify-between items-center mb-6 pb-4 border-b border-white/10">
+                        <div className="flex-row justify-between items-center mb-8 border-b border-gray-700 pb-4">
                             <div>
-                                <h2 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-400">
+                                <h2 className="text-3xl font-bold text-white mb-2">
                                     Gestione Vincoli
                                 </h2>
-                                <p className="text-sm text-slate-400">Impedisci a certe classi di frequentare turni specifici.</p>
+                                <p className="text-gray-400">Impedisci a certe classi di frequentare turni specifici.</p>
                             </div>
                             <button
                                 onClick={() => setShowConstraintsModal(false)}
-                                className="p-2 hover:bg-white/10 rounded-full transition-colors cursor-pointer"
+                                className="p-3 hover:bg-gray-700 rounded-full transition-colors cursor-pointer text-gray-300"
                             >
-                                <X size={24} />
+                                <X size={28} />
                             </button>
                         </div>
 
                         {/* Add New Constraint */}
-                        <div className="flex-col gap-6 mb-8 p-6 rounded-xl" style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.05)' }}>
+                        <div className="flex-col gap-6 mb-8 p-6 rounded-xl bg-slate-900 border border-slate-700">
                             <div className="flex-col gap-2">
-                                <label className="text-xs font-semibold text-slate-400 tracking-wider">SELEZIONA CLASSE</label>
-                                <div className="relative">
-                                    <select
-                                        value={selectedConstraintClass}
-                                        onChange={(e) => setSelectedConstraintClass(e.target.value)}
-                                        className="w-full p-3 rounded-lg bg-slate-800 border border-slate-700 focus:border-blue-500 outline-none appearance-none cursor-pointer"
-                                        style={{ color: 'white', width: '100%' }}
-                                    >
-                                        <option value="">-- Seleziona una classe --</option>
-                                        {[...manager.getClasses()].sort((a, b) => a.classId.localeCompare(b.classId)).map(c => (
-                                            <option key={c.classId} value={c.classId}>{c.classId} ({c.students} stud.)</option>
-                                        ))}
-                                    </select>
-                                    <div className="absolute right-3 top-3 pointer-events-none text-slate-500" style={{ right: '1rem', top: '1rem' }}>▼</div>
-                                </div>
+                                <label className="text-sm font-bold text-gray-400 tracking-wider">SELEZIONA CLASSE</label>
+                                <select
+                                    value={selectedConstraintClass}
+                                    onChange={(e) => setSelectedConstraintClass(e.target.value)}
+                                    className="w-full p-4 rounded-lg bg-slate-800 border border-slate-600 text-white focus:border-blue-500 outline-none"
+                                    style={{ fontSize: '1rem', appearance: 'auto' }}
+                                >
+                                    <option value="" style={{ background: '#1e293b' }}>-- Seleziona una classe --</option>
+                                    {[...manager.getClasses()].sort((a, b) => a.classId.localeCompare(b.classId)).map(c => (
+                                        <option key={c.classId} value={c.classId} style={{ background: '#1e293b' }}>
+                                            {c.classId} ({c.students} studenti)
+                                        </option>
+                                    ))}
+                                </select>
                             </div>
 
                             <div className="flex-col gap-3">
-                                <label className="text-xs font-semibold text-slate-400 tracking-wider">TURNI NON DISPONIBILI</label>
-                                <div className="grid grid-cols-2 gap-3">
+                                <label className="text-sm font-bold text-gray-400 tracking-wider">TURNI VIETATI</label>
+                                <div className="grid grid-cols-2 gap-4">
                                     {["Primo turno", "Secondo turno", "Terzo turno", "Quarto turno"].map(s => {
                                         const isSelected = selectedConstraintShifts.includes(s);
                                         return (
                                             <button
                                                 key={s}
                                                 onClick={() => toggleConstraintShift(s)}
-                                                className={`p-3 rounded-lg text-sm font-medium transition-all duration-200 border cursor-pointer ${isSelected
+                                                className={`p-4 rounded-lg text-lg font-medium transition-all duration-200 border cursor-pointer flex items-center justify-center gap-2 ${isSelected
                                                         ? 'bg-red-500/20 border-red-500 text-red-200'
-                                                        : 'bg-slate-800/50 border-slate-700 hover:border-slate-500 text-slate-400 hover:bg-slate-700/50'
+                                                        : 'bg-slate-800 border-slate-700 hover:border-slate-500 text-slate-400 hover:bg-slate-700'
                                                     }`}
                                             >
-                                                {isSelected ? "⛔ " + s : s}
+                                                {isSelected && <span>⛔</span>} {s}
                                             </button>
                                         );
                                     })}
@@ -608,32 +608,32 @@ export default function Dashboard() {
                             <button
                                 onClick={addConstraint}
                                 disabled={!selectedConstraintClass || selectedConstraintShifts.length === 0}
-                                className={`mt-2 p-3 rounded-lg flex items-center justify-center gap-2 font-bold transition-all cursor-pointer ${(!selectedConstraintClass || selectedConstraintShifts.length === 0)
-                                        ? 'bg-slate-700 text-slate-500 cursor-not-allowed opacity-50'
-                                        : 'bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white shadow-lg shadow-blue-900/20'
+                                className={`mt-4 p-4 rounded-lg flex items-center justify-center gap-2 font-bold text-lg transition-all cursor-pointer ${(!selectedConstraintClass || selectedConstraintShifts.length === 0)
+                                        ? 'bg-gray-700 text-gray-500 cursor-not-allowed opacity-50'
+                                        : 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-900/40'
                                     }`}
                             >
-                                <Plus size={20} /> AGGIUNGI VINCOLO
+                                <Plus size={24} /> AGGIUNGI VINCOLO
                             </button>
                         </div>
 
                         {/* List Existing Limits */}
                         <div className="flex-col gap-3 flex-1 overflow-hidden">
-                            <h3 className="text-xs font-semibold text-slate-400 tracking-wider mb-2">VINCOLI ATTIVI ({Object.keys(constraints).length})</h3>
+                            <h3 className="text-sm font-bold text-gray-400 tracking-wider mb-2">VINCOLI ATTIVI ({Object.keys(constraints).length})</h3>
                             <div className="flex-col gap-2 pr-2 custom-scrollbar" style={{ overflowY: 'auto' }}>
                                 {Object.keys(constraints).length === 0 && (
-                                    <div className="text-center p-8 text-slate-500 italic border border-dashed border-slate-700 rounded-lg">
+                                    <div className="text-center p-8 text-gray-500 italic border border-dashed border-gray-700 rounded-lg">
                                         Nessun vincolo impostato.
                                     </div>
                                 )}
 
                                 {Object.entries(constraints).map(([cId, shifts]) => (
-                                    <div key={cId} className="group flex-row justify-between items-center p-3 rounded-lg bg-slate-800/50 border border-slate-700 hover:border-slate-500 transition-colors">
+                                    <div key={cId} className="group flex-row justify-between items-center p-4 rounded-lg bg-slate-800 border border-slate-700 hover:border-slate-500 transition-colors">
                                         <div className="flex-col gap-1">
-                                            <strong className="text-lg text-white">{cId}</strong>
+                                            <strong className="text-xl text-white">{cId}</strong>
                                             <div className="flex-row gap-2 flex-wrap">
                                                 {shifts.map(s => (
-                                                    <span key={s} className="text-xs px-2 py-0.5 rounded bg-red-500/10 text-red-300 border border-red-500/20">
+                                                    <span key={s} className="text-xs px-2 py-1 rounded bg-red-900/50 text-red-200 border border-red-500/30">
                                                         {s}
                                                     </span>
                                                 ))}
@@ -641,10 +641,10 @@ export default function Dashboard() {
                                         </div>
                                         <button
                                             onClick={() => removeConstraint(cId)}
-                                            className="p-2 text-slate-500 hover:text-red-400 hover:bg-red-400/10 rounded transition-colors cursor-pointer"
+                                            className="p-3 text-gray-400 hover:text-red-400 hover:bg-red-400/10 rounded transition-colors cursor-pointer"
                                             title="Rimuovi vincolo"
                                         >
-                                            <Trash2 size={18} />
+                                            <Trash2 size={24} />
                                         </button>
                                     </div>
                                 ))}
