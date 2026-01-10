@@ -386,6 +386,8 @@ export default function Dashboard() {
         const allClasses = [...unassignedClasses];
         Object.values(shifts).forEach(list => allClasses.push(...list));
 
+        const MAX_CAPACITY = 499;
+
         // Shuffle array helper
         const shuffle = <T,>(array: T[]): T[] => {
             const arr = [...array];
@@ -399,31 +401,15 @@ export default function Dashboard() {
         // Extract year from classId (e.g., "1A" -> 1, "5B" -> 5)
         const getYear = (classId: string): number => {
             const match = classId.match(/^(\d)/);
-            return match ? parseInt(match[1]) : 3; // Default to 3 if can't parse
+            return match ? parseInt(match[1]) : 3;
         };
 
-        // Group classes by year preference
-        const earlyClasses: AssemblyEntry[] = [];  // 1st, 2nd year -> prefer Primo/Secondo
-        const middleClasses: AssemblyEntry[] = []; // 3rd year -> any shift
-        const lateClasses: AssemblyEntry[] = [];   // 4th, 5th year -> prefer Terzo/Quarto
+        // Check if class is settimana corta
+        const isSettimanaCorta = (cls: AssemblyEntry): boolean => {
+            return cls.weekType?.toLowerCase().includes('corta') ?? false;
+        };
 
-        allClasses.forEach(cls => {
-            const year = getYear(cls.classId);
-            if (year <= 2) {
-                earlyClasses.push(cls);
-            } else if (year >= 4) {
-                lateClasses.push(cls);
-            } else {
-                middleClasses.push(cls);
-            }
-        });
-
-        // Shuffle each group
-        const shuffledEarly = shuffle(earlyClasses);
-        const shuffledMiddle = shuffle(middleClasses);
-        const shuffledLate = shuffle(lateClasses);
-
-        // Create new shifts
+        // Create new shifts with student counts
         const newShifts: { [key: string]: AssemblyEntry[] } = {
             "Primo turno": [],
             "Secondo turno": [],
@@ -431,55 +417,73 @@ export default function Dashboard() {
             "Quarto turno": []
         };
 
-        const shiftNames = ["Primo turno", "Secondo turno", "Terzo turno", "Quarto turno"];
-
-        // Check constraints before assigning
-        const canAssign = (cls: AssemblyEntry, shift: string): boolean => {
-            return !constraints[cls.classId]?.includes(shift);
+        const getShiftStudents = (shift: string): number => {
+            return newShifts[shift].reduce((sum, c) => sum + c.students, 0);
         };
 
-        // Distribute early classes preferring Primo/Secondo turno
-        shuffledEarly.forEach(cls => {
-            // Try Primo, then Secondo, then Terzo, then Quarto
-            for (const shift of ["Primo turno", "Secondo turno", "Terzo turno", "Quarto turno"]) {
+        // Get preferred shifts for a class based on year (weighted)
+        const getPreferredShifts = (year: number): string[] => {
+            if (year <= 2) {
+                // 1st, 2nd prefer early but with some randomness
+                return Math.random() < 0.7
+                    ? ["Primo turno", "Secondo turno", "Terzo turno", "Quarto turno"]
+                    : ["Secondo turno", "Primo turno", "Terzo turno", "Quarto turno"];
+            } else if (year >= 4) {
+                // 4th, 5th prefer late but with some randomness
+                return Math.random() < 0.7
+                    ? ["Quarto turno", "Terzo turno", "Secondo turno", "Primo turno"]
+                    : ["Terzo turno", "Quarto turno", "Secondo turno", "Primo turno"];
+            } else {
+                // 3rd year - shuffle preference
+                return shuffle(["Primo turno", "Secondo turno", "Terzo turno", "Quarto turno"]);
+            }
+        };
+
+        // Check if class can be assigned to shift
+        const canAssign = (cls: AssemblyEntry, shift: string): boolean => {
+            // Check constraint
+            if (constraints[cls.classId]?.includes(shift)) return false;
+
+            // Check capacity
+            if (getShiftStudents(shift) + cls.students > MAX_CAPACITY) return false;
+
+            // Quarto turno only for settimana corta
+            if (shift === "Quarto turno" && !isSettimanaCorta(cls)) return false;
+
+            return true;
+        };
+
+        // Shuffle all classes for randomness
+        const shuffledClasses = shuffle(allClasses);
+
+        // Track unassignable classes
+        const leftover: AssemblyEntry[] = [];
+
+        // Assign each class
+        shuffledClasses.forEach(cls => {
+            const year = getYear(cls.classId);
+            const preferredShifts = getPreferredShifts(year);
+
+            let assigned = false;
+            for (const shift of preferredShifts) {
                 if (canAssign(cls, shift)) {
                     newShifts[shift].push(cls);
+                    assigned = true;
                     break;
                 }
             }
-        });
 
-        // Distribute late classes preferring Quarto/Terzo turno
-        shuffledLate.forEach(cls => {
-            // Try Quarto, then Terzo, then Secondo, then Primo
-            for (const shift of ["Quarto turno", "Terzo turno", "Secondo turno", "Primo turno"]) {
-                if (canAssign(cls, shift)) {
-                    newShifts[shift].push(cls);
-                    break;
-                }
-            }
-        });
-
-        // Distribute middle classes evenly, preferring less-filled shifts
-        shuffledMiddle.forEach(cls => {
-            // Find shift with least classes that allows this class
-            let bestShift = shiftNames[0];
-            let minCount = Infinity;
-
-            for (const shift of shiftNames) {
-                if (canAssign(cls, shift) && newShifts[shift].length < minCount) {
-                    minCount = newShifts[shift].length;
-                    bestShift = shift;
-                }
-            }
-
-            if (canAssign(cls, bestShift)) {
-                newShifts[bestShift].push(cls);
+            if (!assigned) {
+                leftover.push(cls);
             }
         });
 
         setShifts(newShifts);
-        setUnassignedClasses([]);
+        setUnassignedClasses(leftover);
+
+        if (leftover.length > 0) {
+            console.log(`⚠️ ${leftover.length} classi non assegnate (vincoli o capacità)`);
+        }
     };
 
     if (loading) return <div className="container text-2xl">Caricamento dati...</div>;
