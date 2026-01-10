@@ -594,22 +594,25 @@ export default function Dashboard() {
 
                             <div className="flex-col gap-4">
                                 <label className="text-sm font-bold text-slate-500 tracking-widest">TURNI VIETATI</label>
-                                <div className="grid grid-cols-2 gap-4">
+                                <div className="grid gap-4" style={{ gridTemplateColumns: '1fr 1fr' }}>
                                     {["Primo turno", "Secondo turno", "Terzo turno", "Quarto turno"].map(s => {
                                         const isSelected = selectedConstraintShifts.includes(s);
                                         return (
                                             <button
                                                 key={s}
                                                 onClick={() => toggleConstraintShift(s)}
-                                                className="p-5 rounded-2xl text-lg font-semibold transition-all duration-300 border cursor-pointer flex items-center justify-center gap-3 shadow-lg"
+                                                className="rounded-2xl text-lg font-semibold transition-all duration-300 cursor-pointer flex items-center justify-center gap-3 shadow-lg"
                                                 style={{
-                                                    backgroundColor: isSelected ? '#dc2626' : '#1e293b',
-                                                    color: isSelected ? 'white' : '#94a3b8',
-                                                    border: isSelected ? '1px solid #ef4444' : '1px solid #334155',
-                                                    transform: isSelected ? 'scale(1.02)' : 'none'
+                                                    padding: '1.25rem',
+                                                    backgroundColor: isSelected ? '#dc2626' : 'rgba(30, 41, 59, 0.6)',
+                                                    color: isSelected ? 'white' : '#cbd5e1',
+                                                    border: isSelected ? '2px solid #ef4444' : '2px solid #475569', // Thicker, clearer borders
+                                                    transform: isSelected ? 'scale(1.02)' : 'none',
+                                                    boxShadow: isSelected ? '0 0 20px rgba(220, 38, 38, 0.4)' : 'none'
                                                 }}
                                             >
-                                                {isSelected && <Ban size={20} />} {s}
+                                                {isSelected ? <Ban size={24} /> : <div style={{ width: 24 }} />} {/* Placeholder to keep alignment */}
+                                                {s}
                                             </button>
                                         );
                                     })}
@@ -619,19 +622,21 @@ export default function Dashboard() {
                             <button
                                 onClick={addConstraint}
                                 disabled={!selectedConstraintClass || selectedConstraintShifts.length === 0}
-                                className="mt-2 p-5 rounded-2xl flex items-center justify-center gap-3 font-bold text-lg transition-all duration-300 cursor-pointer shadow-xl"
+                                className="mt-4 p-6 rounded-2xl flex items-center justify-center gap-3 font-bold text-xl transition-all duration-300 cursor-pointer shadow-xl"
                                 style={{
                                     background: (!selectedConstraintClass || selectedConstraintShifts.length === 0)
                                         ? '#334155'
-                                        : 'linear-gradient(to right, #2563eb, #4f46e5)',
+                                        : 'linear-gradient(135deg, #2563eb, #4f46e5)',
                                     color: (!selectedConstraintClass || selectedConstraintShifts.length === 0)
                                         ? '#64748b'
                                         : 'white',
                                     border: 'none',
-                                    cursor: (!selectedConstraintClass || selectedConstraintShifts.length === 0) ? 'not-allowed' : 'pointer'
+                                    opacity: (!selectedConstraintClass || selectedConstraintShifts.length === 0) ? 0.5 : 1,
+                                    cursor: (!selectedConstraintClass || selectedConstraintShifts.length === 0) ? 'not-allowed' : 'pointer',
+                                    marginTop: '1.5rem'
                                 }}
                             >
-                                <Plus size={24} /> AGGIUNGI VINCOLO
+                                <Plus size={28} /> AGGIUNGI VINCOLO
                             </button>
                         </div>
 
