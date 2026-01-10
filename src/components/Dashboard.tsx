@@ -380,6 +380,108 @@ export default function Dashboard() {
         return [...classes].sort((a, b) => a.classId.localeCompare(b.classId));
     };
 
+    // Auto-assign function
+    const handleAutoAssign = () => {
+        // Get all classes (assigned + unassigned)
+        const allClasses = [...unassignedClasses];
+        Object.values(shifts).forEach(list => allClasses.push(...list));
+
+        // Shuffle array helper
+        const shuffle = <T,>(array: T[]): T[] => {
+            const arr = [...array];
+            for (let i = arr.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [arr[i], arr[j]] = [arr[j], arr[i]];
+            }
+            return arr;
+        };
+
+        // Extract year from classId (e.g., "1A" -> 1, "5B" -> 5)
+        const getYear = (classId: string): number => {
+            const match = classId.match(/^(\d)/);
+            return match ? parseInt(match[1]) : 3; // Default to 3 if can't parse
+        };
+
+        // Group classes by year preference
+        const earlyClasses: AssemblyEntry[] = [];  // 1st, 2nd year -> prefer Primo/Secondo
+        const middleClasses: AssemblyEntry[] = []; // 3rd year -> any shift
+        const lateClasses: AssemblyEntry[] = [];   // 4th, 5th year -> prefer Terzo/Quarto
+
+        allClasses.forEach(cls => {
+            const year = getYear(cls.classId);
+            if (year <= 2) {
+                earlyClasses.push(cls);
+            } else if (year >= 4) {
+                lateClasses.push(cls);
+            } else {
+                middleClasses.push(cls);
+            }
+        });
+
+        // Shuffle each group
+        const shuffledEarly = shuffle(earlyClasses);
+        const shuffledMiddle = shuffle(middleClasses);
+        const shuffledLate = shuffle(lateClasses);
+
+        // Create new shifts
+        const newShifts: { [key: string]: AssemblyEntry[] } = {
+            "Primo turno": [],
+            "Secondo turno": [],
+            "Terzo turno": [],
+            "Quarto turno": []
+        };
+
+        const shiftNames = ["Primo turno", "Secondo turno", "Terzo turno", "Quarto turno"];
+
+        // Check constraints before assigning
+        const canAssign = (cls: AssemblyEntry, shift: string): boolean => {
+            return !constraints[cls.classId]?.includes(shift);
+        };
+
+        // Distribute early classes preferring Primo/Secondo turno
+        shuffledEarly.forEach(cls => {
+            // Try Primo, then Secondo, then Terzo, then Quarto
+            for (const shift of ["Primo turno", "Secondo turno", "Terzo turno", "Quarto turno"]) {
+                if (canAssign(cls, shift)) {
+                    newShifts[shift].push(cls);
+                    break;
+                }
+            }
+        });
+
+        // Distribute late classes preferring Quarto/Terzo turno
+        shuffledLate.forEach(cls => {
+            // Try Quarto, then Terzo, then Secondo, then Primo
+            for (const shift of ["Quarto turno", "Terzo turno", "Secondo turno", "Primo turno"]) {
+                if (canAssign(cls, shift)) {
+                    newShifts[shift].push(cls);
+                    break;
+                }
+            }
+        });
+
+        // Distribute middle classes evenly, preferring less-filled shifts
+        shuffledMiddle.forEach(cls => {
+            // Find shift with least classes that allows this class
+            let bestShift = shiftNames[0];
+            let minCount = Infinity;
+
+            for (const shift of shiftNames) {
+                if (canAssign(cls, shift) && newShifts[shift].length < minCount) {
+                    minCount = newShifts[shift].length;
+                    bestShift = shift;
+                }
+            }
+
+            if (canAssign(cls, bestShift)) {
+                newShifts[bestShift].push(cls);
+            }
+        });
+
+        setShifts(newShifts);
+        setUnassignedClasses([]);
+    };
+
     if (loading) return <div className="container text-2xl">Caricamento dati...</div>;
 
     return (
@@ -450,6 +552,15 @@ export default function Dashboard() {
                         title="Vincoli"
                     >
                         <Ban size={16} />
+                    </button>
+
+                    <button
+                        onClick={handleAutoAssign}
+                        className="glass-panel hover:bg-white/10"
+                        style={{ padding: '0.5rem 1rem', cursor: 'pointer', display: 'flex', gap: '0.5rem', alignItems: 'center', background: 'rgba(34, 197, 94, 0.1)', borderColor: 'rgba(34, 197, 94, 0.3)', color: '#86efac' }}
+                        title="Auto Assegna (1°-2° primi turni, 4°-5° ultimi turni)"
+                    >
+                        🎲 Auto
                     </button>
 
                     {globalErrors.length > 0 && (
