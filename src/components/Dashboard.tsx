@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Upload, Users, Calendar, ArrowRight, Download, Eye, EyeOff, Ban, X, Plus, Trash2 } from "lucide-react";
+import { Upload, Users, Calendar, ArrowRight, Download, Eye, EyeOff, Ban, X, Plus, Trash2, ChevronDown } from "lucide-react";
 import { AssemblyManager } from "@/lib/scheduler";
 import { AssemblyEntry } from "@/lib/parsers";
 
@@ -541,11 +541,11 @@ export default function Dashboard() {
                 }}>
                     <div className="glass-panel" style={{
                         width: '700px',
-                        padding: '3rem',
+                        padding: '4rem',
                         background: '#0f172a', // Darker slate
                         border: '1px solid rgba(255,255,255,0.08)',
                         boxShadow: '0 40px 80px -20px rgba(0, 0, 0, 0.7)',
-                        maxHeight: '85vh',
+                        maxHeight: '90vh',
                         display: 'flex',
                         flexDirection: 'column',
                         borderRadius: '2rem' // Very round corners
@@ -570,28 +570,34 @@ export default function Dashboard() {
                         <div className="flex-col gap-10 mb-10 p-10 rounded-3xl" style={{ background: 'rgba(30, 41, 59, 0.5)', border: '1px solid rgba(255,255,255,0.05)' }}>
                             <div className="flex-col gap-4">
                                 <label className="text-sm font-bold text-slate-400 tracking-[0.2em] uppercase">Seleziona Classe</label>
-                                <select
-                                    value={selectedConstraintClass}
-                                    onChange={(e) => setSelectedConstraintClass(e.target.value)}
-                                    className="w-full rounded-2xl outline-none transition-all focus:ring-2 focus:ring-blue-500/50"
-                                    style={{
-                                        padding: '1.25rem 1.5rem',
-                                        backgroundColor: '#1e293b',
-                                        color: 'white',
-                                        border: '1px solid #334155',
-                                        fontSize: '1.25rem',
-                                        appearance: 'auto',
-                                        cursor: 'pointer',
-                                        lineHeight: '1.75rem' // More breathing room
-                                    }}
-                                >
-                                    <option value="" style={{ background: '#1e293b', color: 'white' }}>-- Seleziona una classe --</option>
-                                    {[...manager.getClasses()].sort((a, b) => a.classId.localeCompare(b.classId)).map(c => (
-                                        <option key={c.classId} value={c.classId} style={{ background: '#1e293b', color: 'white' }}>
-                                            {c.classId} ({c.students} studenti)
-                                        </option>
-                                    ))}
-                                </select>
+                                <div className="relative">
+                                    <select
+                                        value={selectedConstraintClass}
+                                        onChange={(e) => setSelectedConstraintClass(e.target.value)}
+                                        className="w-full rounded-2xl outline-none transition-all focus:ring-2 focus:ring-blue-500/50 appearance-none"
+                                        style={{
+                                            height: '4rem',
+                                            padding: '0 1.5rem',
+                                            backgroundColor: '#1e293b',
+                                            color: 'white',
+                                            border: '1px solid #334155',
+                                            fontSize: '1.25rem',
+                                            cursor: 'pointer',
+                                            lineHeight: 'normal'
+                                        }}
+                                    >
+                                        <option value="" style={{ background: '#1e293b', color: 'gray' }}>-- Seleziona una classe --</option>
+                                        {[...manager.getClasses()].sort((a, b) => a.classId.localeCompare(b.classId)).map(c => (
+                                            <option key={c.classId} value={c.classId} style={{ background: '#1e293b', color: 'white' }}>
+                                                {c.classId} ({c.students} studenti)
+                                            </option>
+                                        ))}
+                                    </select>
+                                    {/* Custom Dropdown Arrow */}
+                                    <div className="absolute right-6 top-1/2 transform -translate-y-1/2 pointer-events-none text-slate-400">
+                                        <ChevronDown size={24} />
+                                    </div>
+                                </div>
                             </div>
 
                             <div className="flex-col gap-5">
