@@ -1077,7 +1077,7 @@ export default function Dashboard() {
             {showSeatingMap && (
                 <SeatingMap
                     shifts={shifts}
-                    selectedShift={Object.keys(shifts).find(s => shifts[s].length > 0) || "Primo turno"}
+                    initialShift={Object.keys(shifts).find(s => shifts[s].length > 0) || "Primo turno"}
                     onClose={() => setShowSeatingMap(false)}
                 />
             )}
