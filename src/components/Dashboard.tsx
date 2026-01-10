@@ -560,24 +560,32 @@ export default function Dashboard() {
                             <button
                                 onClick={() => setShowConstraintsModal(false)}
                                 className="p-3 hover:bg-slate-800 rounded-full transition-colors cursor-pointer text-slate-400 hover:text-white"
+                                style={{ background: 'transparent', border: 'none' }}
                             >
                                 <X size={28} />
                             </button>
                         </div>
 
                         {/* Add New Constraint */}
-                        <div className="flex-col gap-8 mb-10 p-8 rounded-3xl bg-slate-900/50 border border-slate-800">
+                        <div className="flex-col gap-8 mb-10 p-8 rounded-3xl" style={{ background: 'rgba(30, 41, 59, 0.5)', border: '1px solid rgba(255,255,255,0.05)' }}>
                             <div className="flex-col gap-3">
                                 <label className="text-sm font-bold text-slate-500 tracking-widest">SELEZIONA CLASSE</label>
                                 <select
                                     value={selectedConstraintClass}
                                     onChange={(e) => setSelectedConstraintClass(e.target.value)}
-                                    className="w-full p-4 rounded-2xl bg-slate-800 border border-slate-700 text-white focus:border-blue-500 outline-none transition-all hover:bg-slate-750"
-                                    style={{ fontSize: '1.1rem', appearance: 'auto', cursor: 'pointer' }}
+                                    className="w-full p-4 rounded-2xl outline-none transition-all"
+                                    style={{
+                                        backgroundColor: '#1e293b',
+                                        color: 'white',
+                                        border: '1px solid #334155',
+                                        fontSize: '1.1rem',
+                                        appearance: 'auto',
+                                        cursor: 'pointer'
+                                    }}
                                 >
-                                    <option value="" style={{ background: '#1e293b' }}>-- Seleziona una classe --</option>
+                                    <option value="" style={{ background: '#1e293b', color: 'white' }}>-- Seleziona una classe --</option>
                                     {[...manager.getClasses()].sort((a, b) => a.classId.localeCompare(b.classId)).map(c => (
-                                        <option key={c.classId} value={c.classId} style={{ background: '#1e293b' }}>
+                                        <option key={c.classId} value={c.classId} style={{ background: '#1e293b', color: 'white' }}>
                                             {c.classId} ({c.students} studenti)
                                         </option>
                                     ))}
@@ -593,10 +601,13 @@ export default function Dashboard() {
                                             <button
                                                 key={s}
                                                 onClick={() => toggleConstraintShift(s)}
-                                                className={`p-5 rounded-2xl text-lg font-semibold transition-all duration-300 border cursor-pointer flex items-center justify-center gap-3 shadow-lg ${isSelected
-                                                        ? 'bg-gradient-to-br from-red-600 to-red-700 border-red-500 text-white transform scale-[1.02]'
-                                                        : 'bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-700 hover:text-slate-200 hover:border-slate-600'
-                                                    }`}
+                                                className="p-5 rounded-2xl text-lg font-semibold transition-all duration-300 border cursor-pointer flex items-center justify-center gap-3 shadow-lg"
+                                                style={{
+                                                    backgroundColor: isSelected ? '#dc2626' : '#1e293b',
+                                                    color: isSelected ? 'white' : '#94a3b8',
+                                                    border: isSelected ? '1px solid #ef4444' : '1px solid #334155',
+                                                    transform: isSelected ? 'scale(1.02)' : 'none'
+                                                }}
                                             >
                                                 {isSelected && <Ban size={20} />} {s}
                                             </button>
@@ -608,10 +619,17 @@ export default function Dashboard() {
                             <button
                                 onClick={addConstraint}
                                 disabled={!selectedConstraintClass || selectedConstraintShifts.length === 0}
-                                className={`mt-2 p-5 rounded-2xl flex items-center justify-center gap-3 font-bold text-lg transition-all duration-300 cursor-pointer shadow-xl ${(!selectedConstraintClass || selectedConstraintShifts.length === 0)
-                                        ? 'bg-slate-800 text-slate-600 cursor-not-allowed'
-                                        : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white transform hover:scale-[1.02]'
-                                    }`}
+                                className="mt-2 p-5 rounded-2xl flex items-center justify-center gap-3 font-bold text-lg transition-all duration-300 cursor-pointer shadow-xl"
+                                style={{
+                                    background: (!selectedConstraintClass || selectedConstraintShifts.length === 0)
+                                        ? '#334155'
+                                        : 'linear-gradient(to right, #2563eb, #4f46e5)',
+                                    color: (!selectedConstraintClass || selectedConstraintShifts.length === 0)
+                                        ? '#64748b'
+                                        : 'white',
+                                    border: 'none',
+                                    cursor: (!selectedConstraintClass || selectedConstraintShifts.length === 0) ? 'not-allowed' : 'pointer'
+                                }}
                             >
                                 <Plus size={24} /> AGGIUNGI VINCOLO
                             </button>
@@ -628,12 +646,12 @@ export default function Dashboard() {
                                 )}
 
                                 {Object.entries(constraints).map(([cId, shifts]) => (
-                                    <div key={cId} className="group flex-row justify-between items-center p-4 rounded-2xl bg-slate-800/80 border border-slate-700/50 hover:bg-slate-800 transition-all">
+                                    <div key={cId} className="group flex-row justify-between items-center p-4 rounded-2xl transition-all" style={{ background: 'rgba(30, 41, 59, 0.8)', border: '1px solid rgba(51, 65, 85, 0.5)' }}>
                                         <div className="flex-col gap-2">
                                             <strong className="text-xl text-white pl-1">{cId}</strong>
                                             <div className="flex-row gap-2 flex-wrap">
                                                 {shifts.map(s => (
-                                                    <span key={s} className="text-xs px-3 py-1.5 rounded-full bg-red-900/30 text-red-300 border border-red-500/20 font-medium tracking-wide">
+                                                    <span key={s} className="text-xs px-3 py-1.5 rounded-full font-medium tracking-wide" style={{ background: 'rgba(127, 29, 29, 0.3)', color: '#fca5a5', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
                                                         {s}
                                                     </span>
                                                 ))}
@@ -643,6 +661,7 @@ export default function Dashboard() {
                                             onClick={() => removeConstraint(cId)}
                                             className="p-3 text-slate-500 hover:text-red-400 hover:bg-red-400/10 rounded-xl transition-all cursor-pointer"
                                             title="Rimuovi vincolo"
+                                            style={{ background: 'transparent', border: 'none' }}
                                         >
                                             <Trash2 size={22} />
                                         </button>
