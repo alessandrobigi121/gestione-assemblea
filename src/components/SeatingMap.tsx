@@ -10,27 +10,8 @@ interface SeatingMapProps {
     onClose: () => void;
 }
 
-// Auditorium configuration based on the original SVG
-// Coordinates are in the SVG viewBox coordinate system (0 0 794 1123)
-// The SVG has a scale of 1.33333, so actual positions need adjustment
-
 const ROWS = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "L", "M", "N", "O", "P", "Q", "R", "S"];
 
-// Row Y positions (approximate from SVG analysis)
-// Starting from bottom (A near palco) going up
-const ROW_Y_POSITIONS: { [row: string]: number } = {
-    "A": 580, "B": 555, "C": 530, "D": 505, "E": 477,
-    "F": 448, "G": 430, "H": 412, "I": 394, "L": 376,
-    "M": 345, "N": 327, "O": 309, "P": 291, "Q": 273, "R": 255, "S": 237
-};
-
-// X position ranges for left and right sections
-const LEFT_START_X = 52;  // Left section starts around x=52
-const LEFT_END_X = 265;   // Left section ends around x=265
-const RIGHT_START_X = 315; // Right section starts around x=315
-const RIGHT_END_X = 545;  // Right section ends around x=545
-
-// Seats per side for each row
 const SEATS_CONFIG: { [row: string]: { left: number; right: number } } = {
     "A": { left: 15, right: 15 },
     "B": { left: 15, right: 15 },
@@ -51,7 +32,6 @@ const SEATS_CONFIG: { [row: string]: { left: number; right: number } } = {
     "S": { left: 10, right: 9 },
 };
 
-// Color palette
 const COLORS = [
     "#ef4444", "#f97316", "#f59e0b", "#eab308", "#84cc16",
     "#22c55e", "#14b8a6", "#06b6d4", "#0ea5e9", "#3b82f6",
@@ -73,13 +53,30 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
     const [assignments, setAssignments] = useState<SeatAssignment[]>([]);
     const [classColors, setClassColors] = useState<{ [classId: string]: string }>({});
     const [unassignedClasses, setUnassignedClasses] = useState<string[]>([]);
-    const svgContainerRef = useRef<HTMLDivElement>(null);
+    const [svgContent, setSvgContent] = useState<string>("");
+    const [modifiedSvg, setModifiedSvg] = useState<string>("");
 
     const shiftNames = ["Primo turno", "Secondo turno", "Terzo turno", "Quarto turno"];
 
+    // Load SVG on mount
+    useEffect(() => {
+        fetch("/planimetria.svg")
+            .then(res => res.text())
+            .then(text => setSvgContent(text))
+            .catch(err => console.error("Error loading SVG:", err));
+    }, []);
+
+    // Auto-assign when shift changes
     useEffect(() => {
         autoAssignSeats();
     }, [selectedShift, shifts]);
+
+    // Update SVG when assignments change
+    useEffect(() => {
+        if (svgContent && assignments.length >= 0) {
+            updateSvgColors();
+        }
+    }, [svgContent, assignments]);
 
     const autoAssignSeats = () => {
         const classes = shifts[selectedShift] || [];
@@ -153,23 +150,92 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
         setUnassignedClasses(notAssigned);
     };
 
-    // Calculate pixel position for a seat on the SVG
-    const getSeatPosition = (row: string, seat: number, side: "left" | "right") => {
-        const y = ROW_Y_POSITIONS[row] || 400;
-        const maxSeats = SEATS_CONFIG[row][side];
+    // Create a map of which seats belong to which class
+    const getSeatColorMap = (): Map<string, string> => {
+        const map = new Map<string, string>();
+        assignments.forEach(a => {
+            // Create key: "row-seat" e.g. "A-1", "B-16"
+            map.set(`${a.row}-${a.seat}`, a.color);
+        });
+        return map;
+    };
 
-        let x: number;
-        if (side === "left") {
-            const seatIndex = seat - 1;
-            const seatWidth = (LEFT_END_X - LEFT_START_X) / maxSeats;
-            x = LEFT_START_X + seatIndex * seatWidth + seatWidth / 2;
-        } else {
-            const seatIndex = seat - 16;
-            const seatWidth = (RIGHT_END_X - RIGHT_START_X) / maxSeats;
-            x = RIGHT_START_X + seatIndex * seatWidth + seatWidth / 2;
-        }
+    const updateSvgColors = () => {
+        if (!svgContent) return;
 
-        return { x, y };
+        const seatColorMap = getSeatColorMap();
+
+        // Parse the SVG
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(svgContent, "image/svg+xml");
+
+        // Find all text elements
+        const textElements = doc.querySelectorAll("text");
+
+        // Track which row we're in based on position
+        // The SVG has row letters (A, B, C...) and seat numbers
+        // We need to find seat numbers and color them
+
+        let currentRow = "";
+        let seatCountLeft = 0;
+        let seatCountRight = 0;
+
+        textElements.forEach((textEl) => {
+            const content = textEl.textContent?.trim() || "";
+
+            // Check if this is a row letter
+            if (ROWS.includes(content)) {
+                currentRow = content;
+                seatCountLeft = 0;
+                seatCountRight = 0;
+                return;
+            }
+
+            // Check if this is a seat number (1-30)
+            const seatNum = parseInt(content);
+            if (!isNaN(seatNum) && seatNum >= 1 && seatNum <= 30 && currentRow) {
+                // Determine if left (1-15) or right (16-30) side
+                const key = `${currentRow}-${seatNum}`;
+                const color = seatColorMap.get(key);
+
+                if (color) {
+                    // Add a colored background rectangle before the text
+                    // We'll use a different approach - change the fill color of the text
+                    textEl.setAttribute("fill", color);
+                    textEl.setAttribute("font-weight", "bold");
+
+                    // Also try to add a background by wrapping in a group with a rect
+                    const parent = textEl.parentElement;
+                    if (parent) {
+                        // Get text position
+                        const x = parseFloat(textEl.getAttribute("x") || "0");
+                        const y = parseFloat(textEl.getAttribute("y") || "0");
+                        const fontSize = 14.24; // From SVG analysis
+
+                        // Create background rect
+                        const rect = doc.createElementNS("http://www.w3.org/2000/svg", "rect");
+                        const textWidth = content.length === 1 ? 10 : 16;
+                        rect.setAttribute("x", String(x - 2));
+                        rect.setAttribute("y", String(y - fontSize + 2));
+                        rect.setAttribute("width", String(textWidth));
+                        rect.setAttribute("height", String(fontSize + 2));
+                        rect.setAttribute("fill", color);
+                        rect.setAttribute("rx", "2");
+
+                        // Insert rect before text
+                        parent.insertBefore(rect, textEl);
+
+                        // Make text white for contrast
+                        textEl.setAttribute("fill", "white");
+                    }
+                }
+            }
+        });
+
+        // Serialize back to string
+        const serializer = new XMLSerializer();
+        const newSvg = serializer.serializeToString(doc);
+        setModifiedSvg(newSvg);
     };
 
     const cycleShift = (direction: number) => {
@@ -279,60 +345,25 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
                     overflow: 'hidden'
                 }}>
                     {/* SVG Map */}
-                    <div
-                        ref={svgContainerRef}
-                        style={{
-                            flex: 1,
-                            position: 'relative',
-                            overflow: 'auto',
-                            background: 'white',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            padding: '1rem'
-                        }}
-                    >
-                        <div style={{ position: 'relative', width: '100%', maxWidth: '600px' }}>
-                            {/* Original SVG as base */}
-                            <img
-                                src="/planimetria.svg"
-                                alt="Planimetria Auditorium Concordia"
-                                style={{ width: '100%', height: 'auto' }}
+                    <div style={{
+                        flex: 1,
+                        overflow: 'auto',
+                        background: 'white',
+                        display: 'flex',
+                        alignItems: 'flex-start',
+                        justifyContent: 'center',
+                        padding: '1rem'
+                    }}>
+                        {modifiedSvg ? (
+                            <div
+                                dangerouslySetInnerHTML={{ __html: modifiedSvg }}
+                                style={{ maxWidth: '100%', height: 'auto' }}
                             />
-
-                            {/* Overlay container - positioned absolutely over the SVG */}
-                            <svg
-                                viewBox="0 0 595 842"
-                                style={{
-                                    position: 'absolute',
-                                    top: 0,
-                                    left: 0,
-                                    width: '100%',
-                                    height: '100%',
-                                    pointerEvents: 'none'
-                                }}
-                            >
-                                {/* Draw colored rectangles for each assigned seat */}
-                                {assignments.map((a, i) => {
-                                    const pos = getSeatPosition(a.row, a.seat, a.side);
-                                    const seatWidth = 12;
-                                    const seatHeight = 14;
-
-                                    return (
-                                        <rect
-                                            key={`${a.row}-${a.seat}-${i}`}
-                                            x={pos.x - seatWidth / 2}
-                                            y={pos.y - seatHeight / 2}
-                                            width={seatWidth}
-                                            height={seatHeight}
-                                            fill={a.color}
-                                            opacity={0.7}
-                                            rx={2}
-                                        />
-                                    );
-                                })}
-                            </svg>
-                        </div>
+                        ) : (
+                            <div style={{ padding: '2rem', color: '#6b7280' }}>
+                                Caricamento mappa...
+                            </div>
+                        )}
                     </div>
 
                     {/* Legend */}
