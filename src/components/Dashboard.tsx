@@ -417,40 +417,45 @@ export default function Dashboard() {
             "Quarto turno": []
         };
 
+        // Only first 3 shifts for settimana lunga classes
+        const shiftsForLunga = ["Primo turno", "Secondo turno", "Terzo turno"];
+        const allShifts = ["Primo turno", "Secondo turno", "Terzo turno", "Quarto turno"];
+
         const getShiftStudents = (shift: string): number => {
             return newShifts[shift].reduce((sum, c) => sum + c.students, 0);
         };
 
-        // Get preferred shifts for a class based on year (weighted)
-        const getPreferredShifts = (year: number): string[] => {
-            if (year <= 2) {
-                // 1st, 2nd prefer early but with some randomness
-                return Math.random() < 0.7
-                    ? ["Primo turno", "Secondo turno", "Terzo turno", "Quarto turno"]
-                    : ["Secondo turno", "Primo turno", "Terzo turno", "Quarto turno"];
-            } else if (year >= 4) {
-                // 4th, 5th prefer late but with some randomness
-                return Math.random() < 0.7
-                    ? ["Quarto turno", "Terzo turno", "Secondo turno", "Primo turno"]
-                    : ["Terzo turno", "Quarto turno", "Secondo turno", "Primo turno"];
-            } else {
-                // 3rd year - shuffle preference
-                return shuffle(["Primo turno", "Secondo turno", "Terzo turno", "Quarto turno"]);
-            }
+        // Check basic constraints (not capacity)
+        const checkConstraint = (cls: AssemblyEntry, shift: string): boolean => {
+            if (constraints[cls.classId]?.includes(shift)) return false;
+            if (shift === "Quarto turno" && !isSettimanaCorta(cls)) return false;
+            return true;
         };
 
-        // Check if class can be assigned to shift
-        const canAssign = (cls: AssemblyEntry, shift: string): boolean => {
-            // Check constraint
-            if (constraints[cls.classId]?.includes(shift)) return false;
+        // Check if adding class would exceed capacity
+        const hasCapacity = (shift: string, students: number): boolean => {
+            return getShiftStudents(shift) + students <= MAX_CAPACITY;
+        };
 
-            // Check capacity
-            if (getShiftStudents(shift) + cls.students > MAX_CAPACITY) return false;
+        // Find best shift considering preference and balance
+        const findBestShift = (cls: AssemblyEntry, preferredOrder: string[]): string | null => {
+            // First try preferred shifts in order (if they have capacity)
+            for (const shift of preferredOrder) {
+                if (checkConstraint(cls, shift) && hasCapacity(shift, cls.students)) {
+                    return shift;
+                }
+            }
 
-            // Quarto turno only for settimana corta
-            if (shift === "Quarto turno" && !isSettimanaCorta(cls)) return false;
+            // If all preferred are full, find the least-filled valid shift
+            const validShifts = (isSettimanaCorta(cls) ? allShifts : shiftsForLunga)
+                .filter(s => checkConstraint(cls, s) && hasCapacity(s, cls.students));
 
-            return true;
+            if (validShifts.length === 0) return null;
+
+            // Return the one with least students
+            return validShifts.reduce((a, b) =>
+                getShiftStudents(a) <= getShiftStudents(b) ? a : b
+            );
         };
 
         // Shuffle all classes for randomness
@@ -462,18 +467,38 @@ export default function Dashboard() {
         // Assign each class
         shuffledClasses.forEach(cls => {
             const year = getYear(cls.classId);
-            const preferredShifts = getPreferredShifts(year);
+            const canDoQuarto = isSettimanaCorta(cls);
 
-            let assigned = false;
-            for (const shift of preferredShifts) {
-                if (canAssign(cls, shift)) {
-                    newShifts[shift].push(cls);
-                    assigned = true;
-                    break;
+            // Define preferred order based on year (with slight randomization)
+            let preferredOrder: string[];
+
+            if (year <= 2) {
+                // 1st, 2nd prefer early
+                preferredOrder = Math.random() < 0.6
+                    ? ["Primo turno", "Secondo turno", "Terzo turno"]
+                    : ["Secondo turno", "Primo turno", "Terzo turno"];
+                if (canDoQuarto) preferredOrder.push("Quarto turno");
+            } else if (year >= 4) {
+                // 4th, 5th prefer late
+                if (canDoQuarto) {
+                    preferredOrder = Math.random() < 0.6
+                        ? ["Quarto turno", "Terzo turno", "Secondo turno", "Primo turno"]
+                        : ["Terzo turno", "Quarto turno", "Secondo turno", "Primo turno"];
+                } else {
+                    preferredOrder = Math.random() < 0.6
+                        ? ["Terzo turno", "Secondo turno", "Primo turno"]
+                        : ["Secondo turno", "Terzo turno", "Primo turno"];
                 }
+            } else {
+                // 3rd year - balanced
+                preferredOrder = shuffle(canDoQuarto ? allShifts : shiftsForLunga);
             }
 
-            if (!assigned) {
+            const bestShift = findBestShift(cls, preferredOrder);
+
+            if (bestShift) {
+                newShifts[bestShift].push(cls);
+            } else {
                 leftover.push(cls);
             }
         });
