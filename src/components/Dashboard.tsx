@@ -567,20 +567,22 @@ export default function Dashboard() {
                         </div>
 
                         {/* Add New Constraint */}
-                        <div className="flex-col gap-8 mb-10 p-8 rounded-3xl" style={{ background: 'rgba(30, 41, 59, 0.5)', border: '1px solid rgba(255,255,255,0.05)' }}>
-                            <div className="flex-col gap-3">
-                                <label className="text-sm font-bold text-slate-500 tracking-widest">SELEZIONA CLASSE</label>
+                        <div className="flex-col gap-10 mb-10 p-10 rounded-3xl" style={{ background: 'rgba(30, 41, 59, 0.5)', border: '1px solid rgba(255,255,255,0.05)' }}>
+                            <div className="flex-col gap-4">
+                                <label className="text-sm font-bold text-slate-400 tracking-[0.2em] uppercase">Seleziona Classe</label>
                                 <select
                                     value={selectedConstraintClass}
                                     onChange={(e) => setSelectedConstraintClass(e.target.value)}
-                                    className="w-full p-4 rounded-2xl outline-none transition-all"
+                                    className="w-full rounded-2xl outline-none transition-all focus:ring-2 focus:ring-blue-500/50"
                                     style={{
+                                        padding: '1.25rem 1.5rem',
                                         backgroundColor: '#1e293b',
                                         color: 'white',
                                         border: '1px solid #334155',
-                                        fontSize: '1.1rem',
+                                        fontSize: '1.25rem',
                                         appearance: 'auto',
-                                        cursor: 'pointer'
+                                        cursor: 'pointer',
+                                        lineHeight: '1.75rem' // More breathing room
                                     }}
                                 >
                                     <option value="" style={{ background: '#1e293b', color: 'white' }}>-- Seleziona una classe --</option>
@@ -592,27 +594,31 @@ export default function Dashboard() {
                                 </select>
                             </div>
 
-                            <div className="flex-col gap-4">
-                                <label className="text-sm font-bold text-slate-500 tracking-widest">TURNI VIETATI</label>
-                                <div className="grid gap-4" style={{ gridTemplateColumns: '1fr 1fr' }}>
+                            <div className="flex-col gap-5">
+                                <label className="text-sm font-bold text-slate-400 tracking-[0.2em] uppercase">Turni Vietati</label>
+                                <div className="grid gap-5" style={{ gridTemplateColumns: '1fr 1fr' }}>
                                     {["Primo turno", "Secondo turno", "Terzo turno", "Quarto turno"].map(s => {
                                         const isSelected = selectedConstraintShifts.includes(s);
                                         return (
                                             <button
                                                 key={s}
                                                 onClick={() => toggleConstraintShift(s)}
-                                                className="rounded-2xl text-lg font-semibold transition-all duration-300 cursor-pointer flex items-center justify-center gap-3 shadow-lg"
+                                                className="rounded-2xl text-xl font-medium transition-all duration-300 cursor-pointer flex items-center justify-center gap-4 shadow-lg group relative overflow-hidden"
                                                 style={{
-                                                    padding: '1.25rem',
+                                                    padding: '2rem 1.5rem', // Taller buttons
                                                     backgroundColor: isSelected ? '#dc2626' : 'rgba(30, 41, 59, 0.6)',
                                                     color: isSelected ? 'white' : '#cbd5e1',
-                                                    border: isSelected ? '2px solid #ef4444' : '2px solid #475569', // Thicker, clearer borders
+                                                    border: isSelected ? '2px solid #ef4444' : '2px solid #475569',
                                                     transform: isSelected ? 'scale(1.02)' : 'none',
-                                                    boxShadow: isSelected ? '0 0 20px rgba(220, 38, 38, 0.4)' : 'none'
+                                                    boxShadow: isSelected ? '0 0 25px rgba(220, 38, 38, 0.4)' : 'none',
+                                                    letterSpacing: '0.05em' // Tracking wider
                                                 }}
                                             >
-                                                {isSelected ? <Ban size={24} /> : <div style={{ width: 24 }} />} {/* Placeholder to keep alignment */}
-                                                {s}
+                                                {/* Hover effect overlay */}
+                                                <div className="absolute inset-0 bg-white/5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
+
+                                                {isSelected ? <Ban size={28} /> : <div style={{ width: 28 }} />}
+                                                <span className="leading-none">{s}</span>
                                             </button>
                                         );
                                     })}
@@ -622,7 +628,7 @@ export default function Dashboard() {
                             <button
                                 onClick={addConstraint}
                                 disabled={!selectedConstraintClass || selectedConstraintShifts.length === 0}
-                                className="mt-4 p-6 rounded-2xl flex items-center justify-center gap-3 font-bold text-xl transition-all duration-300 cursor-pointer shadow-xl"
+                                className="mt-6 p-6 rounded-2xl flex items-center justify-center gap-4 font-bold text-xl transition-all duration-300 cursor-pointer shadow-xl tracking-wide uppercase"
                                 style={{
                                     background: (!selectedConstraintClass || selectedConstraintShifts.length === 0)
                                         ? '#334155'
@@ -633,10 +639,10 @@ export default function Dashboard() {
                                     border: 'none',
                                     opacity: (!selectedConstraintClass || selectedConstraintShifts.length === 0) ? 0.5 : 1,
                                     cursor: (!selectedConstraintClass || selectedConstraintShifts.length === 0) ? 'not-allowed' : 'pointer',
-                                    marginTop: '1.5rem'
+                                    boxShadow: (!selectedConstraintClass || selectedConstraintShifts.length === 0) ? 'none' : '0 10px 30px -10px rgba(79, 70, 229, 0.5)'
                                 }}
                             >
-                                <Plus size={28} /> AGGIUNGI VINCOLO
+                                <Plus size={32} /> AGGIUNGI VINCOLO
                             </button>
                         </div>
 
