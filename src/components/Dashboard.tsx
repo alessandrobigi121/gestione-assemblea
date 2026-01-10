@@ -51,6 +51,55 @@ export default function Dashboard() {
                 await manager.loadData(scheduleText, assemblyText, teachersText);
 
                 const classes = manager.getClasses();
+
+                // Try to load from localStorage first
+                const savedData = localStorage.getItem('assemblea_autosave');
+                if (savedData) {
+                    try {
+                        const parsed = JSON.parse(savedData);
+                        // Validate that saved classIds still exist
+                        const validClassIds = new Set(classes.map(c => c.classId));
+
+                        // Rebuild shifts with valid classes
+                        const rebuiltShifts: { [key: string]: AssemblyEntry[] } = {
+                            "Primo turno": [],
+                            "Secondo turno": [],
+                            "Terzo turno": [],
+                            "Quarto turno": []
+                        };
+                        const assignedIds = new Set<string>();
+
+                        if (parsed.shifts) {
+                            Object.keys(rebuiltShifts).forEach(shiftName => {
+                                if (parsed.shifts[shiftName]) {
+                                    parsed.shifts[shiftName].forEach((savedClass: any) => {
+                                        const fullClass = classes.find(c => c.classId === savedClass.classId);
+                                        if (fullClass) {
+                                            rebuiltShifts[shiftName].push(fullClass);
+                                            assignedIds.add(fullClass.classId);
+                                        }
+                                    });
+                                }
+                            });
+                        }
+
+                        // Unassigned = all classes not in any shift
+                        const rebuiltUnassigned = classes.filter(c => !assignedIds.has(c.classId));
+
+                        setShifts(rebuiltShifts);
+                        setUnassignedClasses(rebuiltUnassigned);
+                        if (parsed.selectedDay) setSelectedDay(parsed.selectedDay);
+                        if (parsed.constraints) setConstraints(parsed.constraints);
+
+                        console.log("✅ Dati caricati dal salvataggio automatico");
+                        setLoading(false);
+                        return;
+                    } catch (e) {
+                        console.warn("Errore nel caricamento del salvataggio automatico, uso dati CSV", e);
+                    }
+                }
+
+                // No saved data or error - use CSV data
                 const mapped: any = {
                     "Primo turno": [],
                     "Secondo turno": [],
@@ -93,6 +142,22 @@ export default function Dashboard() {
         }
         init();
     }, []);
+
+    // Auto-save to localStorage
+    useEffect(() => {
+        if (loading) return; // Don't save during initial load
+
+        const dataToSave = {
+            shifts,
+            unassignedClasses,
+            selectedDay,
+            constraints,
+            savedAt: new Date().toISOString()
+        };
+
+        localStorage.setItem('assemblea_autosave', JSON.stringify(dataToSave));
+        console.log("💾 Salvataggio automatico...");
+    }, [shifts, unassignedClasses, selectedDay, constraints, loading]);
 
     // Validation Effect
     useEffect(() => {
