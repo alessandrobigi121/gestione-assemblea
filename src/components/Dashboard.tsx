@@ -261,16 +261,17 @@ export default function Dashboard() {
     if (loading) return <div className="container text-2xl">Caricamento dati...</div>;
 
     return (
-        <div className="container" style={{ maxWidth: '100%', paddingBottom: showUnassigned ? '250px' : '2rem' }}> {/* Padding bottom for footer */}
-            <header className="flex-row justify-between items-center mb-24 mt-8 print:hidden"> {/* Increased spacing */}
+        <div className="container" style={{ maxWidth: '100%', paddingBottom: showUnassigned ? '280px' : '2rem' }}>
+            {/* Header */}
+            <header className="flex-row justify-between items-center print:hidden" style={{ marginBottom: '2rem', marginTop: '1.5rem', paddingBottom: '1.5rem', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
                 <div>
-                    <h1 className="text-2xl" style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>
-                        Gestione Assemblea
+                    <h1 style={{ fontSize: '2rem', fontWeight: 800, marginBottom: '0.25rem', background: 'linear-gradient(135deg, #6366f1, #38bdf8)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+                        📋 Gestione Assemblea
                     </h1>
+                    <p className="text-sm" style={{ opacity: 0.7 }}>Trascina le classi nei turni per organizzare l'assemblea</p>
                 </div>
 
-                <div className="flex-row gap-4">
-                    {/* Hidden Import Input */}
+                <div className="flex-row gap-2" style={{ flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                     <input
                         type="file"
                         ref={fileInputRef}
@@ -279,40 +280,54 @@ export default function Dashboard() {
                         onChange={handleImport}
                     />
 
+                    {/* Day Selector - Prominent */}
+                    <div className="glass-panel flex-row items-center gap-2" style={{ padding: '0.5rem 1rem', background: 'rgba(99, 102, 241, 0.1)', borderColor: 'rgba(99, 102, 241, 0.3)' }}>
+                        <Calendar size={16} style={{ color: '#818cf8' }} />
+                        <select
+                            value={selectedDay}
+                            onChange={(e) => setSelectedDay(e.target.value)}
+                            style={{ background: 'transparent', color: 'white', border: 'none', fontWeight: 'bold', cursor: 'pointer' }}
+                        >
+                            {["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato"].map(d => (
+                                <option key={d} value={d} style={{ background: '#1e293b' }}>{d}</option>
+                            ))}
+                        </select>
+                    </div>
+
                     <button
                         onClick={() => setShowUnassigned(!showUnassigned)}
                         className="glass-panel hover:bg-white/10"
                         style={{ padding: '0.5rem 1rem', cursor: 'pointer', display: 'flex', gap: '0.5rem', alignItems: 'center' }}
                         title={showUnassigned ? "Nascondi Classi" : "Mostra Classi"}
                     >
-                        {showUnassigned ? <EyeOff size={18} /> : <Eye size={18} />} {showUnassigned ? "Nascondi Classi" : "Mostra Classi"}
+                        {showUnassigned ? <EyeOff size={16} /> : <Eye size={16} />}
                     </button>
 
                     <button
                         onClick={() => fileInputRef.current?.click()}
                         className="glass-panel hover:bg-white/10"
                         style={{ padding: '0.5rem 1rem', cursor: 'pointer', display: 'flex', gap: '0.5rem', alignItems: 'center' }}
-                        title="Importa Configurazione"
+                        title="Importa"
                     >
-                        <Upload size={18} /> Importa
+                        <Upload size={16} />
                     </button>
 
                     <button
                         onClick={handleExport}
                         className="glass-panel hover:bg-white/10"
                         style={{ padding: '0.5rem 1rem', cursor: 'pointer', display: 'flex', gap: '0.5rem', alignItems: 'center' }}
-                        title="Esporta Configurazione"
+                        title="Esporta"
                     >
-                        <Download size={18} /> Esporta
+                        <Download size={16} />
                     </button>
 
                     <button
                         onClick={() => setShowConstraintsModal(true)}
                         className="glass-panel hover:bg-white/10"
                         style={{ padding: '0.5rem 1rem', cursor: 'pointer', display: 'flex', gap: '0.5rem', alignItems: 'center' }}
-                        title="Gestisci Vincoli"
+                        title="Vincoli"
                     >
-                        <Ban size={18} /> Vincoli
+                        <Ban size={16} />
                     </button>
 
                     {globalErrors.length > 0 && (
@@ -325,22 +340,10 @@ export default function Dashboard() {
                         onClick={handleReset}
                         className="glass-panel"
                         style={{ padding: '0.5rem 1rem', cursor: 'pointer', background: 'rgba(239, 68, 68, 0.1)', borderColor: 'rgba(239, 68, 68, 0.3)', color: '#fca5a5' }}
+                        title="Reset"
                     >
-                        Reset Tutto
+                        🔄
                     </button>
-
-                    <div className="glass-panel" style={{ padding: '0.5rem 1rem' }}>
-                        <label className="text-sm mr-2">Giorno:</label>
-                        <select
-                            value={selectedDay}
-                            onChange={(e) => setSelectedDay(e.target.value)}
-                            style={{ background: 'transparent', color: 'white', border: 'none', fontWeight: 'bold' }}
-                        >
-                            {["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato"].map(d => (
-                                <option key={d} value={d}>{d}</option>
-                            ))}
-                        </select>
-                    </div>
                 </div>
             </header>
 
@@ -359,30 +362,45 @@ export default function Dashboard() {
                             className="glass-panel drop-zone flex-col gap-4"
                             onDrop={(e) => handleDrop(e, shift)}
                             onDragOver={handleDragOver}
-                            style={{ borderColor: shiftErrors[shift] ? '#ef4444' : '', minHeight: '400px' }}
+                            style={{
+                                borderColor: shiftErrors[shift] ? '#ef4444' : 'rgba(255,255,255,0.1)',
+                                minHeight: '450px',
+                                transition: 'all 0.2s ease'
+                            }}
                         >
-                            <div className="flex-row justify-between items-center">
-                                <h2 className="text-xl">{shift}</h2>
-                                <div className="text-right">
-                                    {/* Time removed as requested */}
-                                    <span className="text-xs" style={{ color: isOverCapacity ? '#ef4444' : '#94a3b8' }}>{stats.totalPeople} / 499</span>
+                            {/* Shift Header */}
+                            <div style={{ marginBottom: '0.5rem' }}>
+                                <div className="flex-row justify-between items-center">
+                                    <h2 style={{ fontSize: '1.1rem', fontWeight: 700 }}>{shift}</h2>
+                                    <div className="flex-row items-center gap-2">
+                                        <Users size={14} style={{ opacity: 0.5 }} />
+                                        <span style={{
+                                            fontSize: '0.85rem',
+                                            fontWeight: 600,
+                                            color: isOverCapacity ? '#ef4444' : '#22c55e'
+                                        }}>
+                                            {stats.totalPeople}
+                                        </span>
+                                        <span className="text-sm" style={{ opacity: 0.5 }}>/ 499</span>
+                                    </div>
                                 </div>
-                            </div>
 
-                            {shiftErrors[shift] && (
-                                <div className="text-sm" style={{ color: '#ef4444' }}>
-                                    {shiftErrors[shift].map((e, i) => <div key={i}>{e}</div>)}
+                                {shiftErrors[shift] && (
+                                    <div className="text-sm" style={{ color: '#ef4444', marginTop: '0.5rem' }}>
+                                        {shiftErrors[shift].map((e, i) => <div key={i}>{e}</div>)}
+                                    </div>
+                                )}
+
+                                {/* Capacity Bar */}
+                                <div style={{ width: '100%', height: '4px', background: 'rgba(255,255,255,0.1)', borderRadius: '2px', overflow: 'hidden', marginTop: '0.75rem' }}>
+                                    <div style={{
+                                        width: `${Math.min(capacityPct, 100)}%`,
+                                        height: '100%',
+                                        background: isOverCapacity ? 'linear-gradient(90deg, #ef4444, #dc2626)' : 'linear-gradient(90deg, #22c55e, #16a34a)',
+                                        transition: 'width 0.3s ease',
+                                        borderRadius: '2px'
+                                    }} />
                                 </div>
-                            )}
-
-                            {/* Capacity Bar */}
-                            <div style={{ width: '100%', height: '6px', background: 'rgba(255,255,255,0.1)', borderRadius: '3px', overflow: 'hidden' }}>
-                                <div style={{
-                                    width: `${Math.min(capacityPct, 100)}%`,
-                                    height: '100%',
-                                    background: isOverCapacity ? '#ef4444' : '#22c55e',
-                                    transition: 'width 0.3s ease'
-                                }} />
                             </div>
 
                             <div className="flex-col gap-2">
@@ -465,42 +483,61 @@ export default function Dashboard() {
             {/* Sticky Footer */}
             {/* Sticky Footer */}
             {showUnassigned && (
-                <div className="glass-panel" style={{
+                <div style={{
                     position: 'fixed',
                     bottom: 0,
                     left: 0,
                     right: 0,
                     width: '100%',
-                    height: '220px',
-                    background: 'rgba(15, 23, 42, 0.95)',
-                    backdropFilter: 'blur(10px)',
-                    borderTop: '1px solid rgba(255, 255, 255, 0.1)',
+                    background: 'linear-gradient(to top, rgba(15, 23, 42, 0.98), rgba(15, 23, 42, 0.95))',
+                    backdropFilter: 'blur(12px)',
+                    borderTop: '1px solid rgba(99, 102, 241, 0.2)',
                     zIndex: 50,
-                    padding: '1rem 2rem',
-                    borderLeft: 'none',
-                    borderRight: 'none',
-                    borderBottom: 'none',
-                    borderRadius: 0
+                    padding: '1.5rem 2rem',
+                    boxShadow: '0 -10px 40px rgba(0,0,0,0.3)'
                 }}>
-                    <h3 className="text-xl mb-4 text-white">Classi Non Assegnate ({unassignedClasses.length})</h3>
+                    <div className="flex-row justify-between items-center" style={{ marginBottom: '1rem' }}>
+                        <h3 style={{ fontSize: '1rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            📦 Classi Non Assegnate
+                            <span style={{
+                                background: 'rgba(99, 102, 241, 0.2)',
+                                padding: '0.25rem 0.75rem',
+                                borderRadius: '999px',
+                                fontSize: '0.85rem',
+                                color: '#818cf8'
+                            }}>
+                                {unassignedClasses.length}
+                            </span>
+                        </h3>
+                        <button
+                            onClick={() => setShowUnassigned(false)}
+                            className="glass-panel hover:bg-white/10"
+                            style={{ padding: '0.25rem 0.5rem', cursor: 'pointer', fontSize: '0.75rem' }}
+                        >
+                            Nascondi ↓
+                        </button>
+                    </div>
                     <div
-                        className="flex-row gap-4 drop-zone"
+                        className="flex-row gap-3 drop-zone"
                         style={{
-                            height: '140px',
-                            border: 'none',
-                            background: 'transparent',
+                            height: '120px',
+                            border: '2px dashed rgba(255,255,255,0.1)',
+                            borderRadius: 'var(--radius)',
+                            background: 'rgba(0,0,0,0.2)',
                             overflowX: 'auto',
-                            padding: '0.5rem',
-                            alignItems: 'center',
-                            justifyContent: 'flex-start'
+                            padding: '0.75rem',
+                            alignItems: 'flex-start'
                         }}
                         onDrop={(e) => handleDrop(e, "unassigned")}
                         onDragOver={handleDragOver}
                     >
-                        {sortClasses(unassignedClasses).map(c => {
+                        {unassignedClasses.length === 0 ? (
+                            <div style={{ width: '100%', textAlign: 'center', opacity: 0.4, paddingTop: '2rem' }}>
+                                ✅ Tutte le classi sono state assegnate!
+                            </div>
+                        ) : sortClasses(unassignedClasses).map(c => {
                             const locationMap: any = { "Borgo S. Antonio": "Borgo", "Sede Centrale": "Centrale", "Via Colvera": "Colvera" };
                             const displayLocation = locationMap[c.location] || c.location;
-                            const displayWeek = c.weekType.includes("Lunga") ? "Lunga" : "Corta";
 
                             return (
                                 <div
@@ -508,15 +545,14 @@ export default function Dashboard() {
                                     draggable
                                     onDragStart={(e) => handleDragStart(e, c.classId, "unassigned")}
                                     className="drag-item"
-                                    style={{ minWidth: '140px' }}
+                                    style={{ minWidth: '100px', padding: '0.5rem 0.75rem' }}
                                 >
-                                    <div className="flex-row justify-between">
-                                        <strong>{c.classId}</strong>
-                                        <span className="text-sm">{c.students}</span>
+                                    <div className="flex-row justify-between items-center" style={{ gap: '0.5rem' }}>
+                                        <strong style={{ fontSize: '0.9rem' }}>{c.classId}</strong>
+                                        <span className="text-sm" style={{ opacity: 0.6 }}>{c.students}</span>
                                     </div>
-                                    <div className="flex-row justify-between text-sm" style={{ marginTop: '0.25rem', fontSize: '0.75rem', opacity: 0.8 }}>
-                                        <span>{displayLocation}</span>
-                                        <span>{displayWeek}</span>
+                                    <div className="text-sm" style={{ fontSize: '0.7rem', opacity: 0.5, marginTop: '0.25rem' }}>
+                                        {displayLocation}
                                     </div>
                                 </div>
                             )
