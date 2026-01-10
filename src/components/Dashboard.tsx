@@ -511,6 +511,26 @@ export default function Dashboard() {
         }
     };
 
+    // Copy list to clipboard
+    const handleCopyList = () => {
+        const lines: string[] = [];
+
+        ["Primo turno", "Secondo turno", "Terzo turno", "Quarto turno"].forEach(shiftName => {
+            const classIds = sortClasses(shifts[shiftName]).map(c => c.classId);
+            lines.push(`${shiftName}:`);
+            lines.push(classIds.join(", "));
+            lines.push(""); // Empty line between shifts
+        });
+
+        const text = lines.join("\n");
+        navigator.clipboard.writeText(text).then(() => {
+            alert("📋 Elenco copiato negli appunti!");
+        }).catch(err => {
+            console.error("Errore copia:", err);
+            alert("Errore durante la copia");
+        });
+    };
+
     if (loading) return <div className="container text-2xl">Caricamento dati...</div>;
 
     return (
@@ -590,6 +610,15 @@ export default function Dashboard() {
                         title="Auto Assegna (1°-2° primi turni, 4°-5° ultimi turni)"
                     >
                         🎲 Auto
+                    </button>
+
+                    <button
+                        onClick={handleCopyList}
+                        className="glass-panel hover:bg-white/10"
+                        style={{ padding: '0.5rem 1rem', cursor: 'pointer', display: 'flex', gap: '0.5rem', alignItems: 'center', background: 'rgba(99, 102, 241, 0.1)', borderColor: 'rgba(99, 102, 241, 0.3)', color: '#a5b4fc' }}
+                        title="Copia elenco turni"
+                    >
+                        📋 Copia
                     </button>
 
                     {globalErrors.length > 0 && (
