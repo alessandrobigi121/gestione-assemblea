@@ -29,6 +29,63 @@ export default function Dashboard() {
     const [selectedConstraintClass, setSelectedConstraintClass] = useState("");
     const [selectedConstraintShifts, setSelectedConstraintShifts] = useState<string[]>([]);
 
+    // Time-based constraint selection
+    const [busyFrom, setBusyFrom] = useState("");
+    const [busyTo, setBusyTo] = useState("");
+
+    // Shift times definition
+    const SHIFT_TIMES: { [key: string]: { start: string; end: string } } = {
+        "Primo turno": { start: "08:20", end: "09:45" },
+        "Secondo turno": { start: "09:45", end: "11:10" },
+        "Terzo turno": { start: "11:10", end: "12:30" },
+        "Quarto turno": { start: "12:30", end: "13:50" }
+    };
+
+    // Function to convert time string to minutes for comparison
+    const timeToMinutes = (time: string): number => {
+        const [hours, minutes] = time.split(':').map(Number);
+        return hours * 60 + minutes;
+    };
+
+    // Function to calculate which shifts overlap with a given time range
+    const calculateOverlappingShifts = (from: string, to: string): string[] => {
+        if (!from || !to) return [];
+
+        const fromMinutes = timeToMinutes(from);
+        const toMinutes = timeToMinutes(to);
+
+        if (fromMinutes >= toMinutes) return []; // Invalid range
+
+        const overlapping: string[] = [];
+
+        Object.entries(SHIFT_TIMES).forEach(([shiftName, times]) => {
+            const shiftStart = timeToMinutes(times.start);
+            const shiftEnd = timeToMinutes(times.end);
+
+            // Check if there's any overlap: busy period overlaps with shift if
+            // busy starts before shift ends AND busy ends after shift starts
+            if (fromMinutes < shiftEnd && toMinutes > shiftStart) {
+                overlapping.push(shiftName);
+            }
+        });
+
+        return overlapping;
+    };
+
+    // Auto-select shifts when time changes
+    const handleTimeChange = (type: 'from' | 'to', value: string) => {
+        const newFrom = type === 'from' ? value : busyFrom;
+        const newTo = type === 'to' ? value : busyTo;
+
+        if (type === 'from') setBusyFrom(value);
+        if (type === 'to') setBusyTo(value);
+
+        if (newFrom && newTo) {
+            const overlapping = calculateOverlappingShifts(newFrom, newTo);
+            setSelectedConstraintShifts(overlapping);
+        }
+    };
+
     // Re-implementing init to ensure state consistency
     useEffect(() => {
         async function init() {
@@ -679,31 +736,90 @@ export default function Dashboard() {
                                     </div>
                                 </div>
 
+                                {/* Time-based Selection */}
+                                <div className="flex-col gap-2">
+                                    <label className="text-sm">⏰ Orario Impegno (auto-seleziona turni):</label>
+                                    <div className="flex-row gap-2">
+                                        <div className="glass-panel flex-row items-center gap-2" style={{ padding: '0.5rem 1rem', flex: 1 }}>
+                                            <span className="text-sm" style={{ opacity: 0.6 }}>Dalle</span>
+                                            <input
+                                                type="time"
+                                                value={busyFrom}
+                                                onChange={(e) => handleTimeChange('from', e.target.value)}
+                                                style={{
+                                                    background: 'transparent',
+                                                    color: 'white',
+                                                    border: 'none',
+                                                    fontSize: '1rem',
+                                                    cursor: 'pointer'
+                                                }}
+                                            />
+                                        </div>
+                                        <div className="glass-panel flex-row items-center gap-2" style={{ padding: '0.5rem 1rem', flex: 1 }}>
+                                            <span className="text-sm" style={{ opacity: 0.6 }}>Alle</span>
+                                            <input
+                                                type="time"
+                                                value={busyTo}
+                                                onChange={(e) => handleTimeChange('to', e.target.value)}
+                                                style={{
+                                                    background: 'transparent',
+                                                    color: 'white',
+                                                    border: 'none',
+                                                    fontSize: '1rem',
+                                                    cursor: 'pointer'
+                                                }}
+                                            />
+                                        </div>
+                                        {busyFrom && busyTo && (
+                                            <button
+                                                onClick={() => { setBusyFrom(''); setBusyTo(''); setSelectedConstraintShifts([]); }}
+                                                className="glass-panel hover:bg-white/10"
+                                                style={{ padding: '0.5rem', cursor: 'pointer' }}
+                                                title="Reset orari"
+                                            >
+                                                ✕
+                                            </button>
+                                        )}
+                                    </div>
+                                    {busyFrom && busyTo && selectedConstraintShifts.length > 0 && (
+                                        <div className="text-sm" style={{ color: '#818cf8', marginTop: '0.25rem' }}>
+                                            → Turni in conflitto: {selectedConstraintShifts.join(', ')}
+                                        </div>
+                                    )}
+                                </div>
+
                                 {/* Shift Selection */}
                                 <div className="flex-col gap-2">
                                     <label className="text-sm">Turni Vietati:</label>
                                     <div className="grid grid-cols-2 gap-2">
                                         {["Primo turno", "Secondo turno", "Terzo turno", "Quarto turno"].map(s => {
                                             const isSelected = selectedConstraintShifts.includes(s);
+                                            const times = SHIFT_TIMES[s];
                                             return (
                                                 <button
                                                     key={s}
                                                     onClick={() => toggleConstraintShift(s)}
                                                     className="glass-panel"
                                                     style={{
-                                                        padding: '1rem',
+                                                        padding: '0.75rem',
                                                         cursor: 'pointer',
                                                         display: 'flex',
+                                                        flexDirection: 'column',
                                                         alignItems: 'center',
                                                         justifyContent: 'center',
-                                                        gap: '0.5rem',
+                                                        gap: '0.25rem',
                                                         background: isSelected ? 'rgba(239, 68, 68, 0.2)' : undefined,
                                                         borderColor: isSelected ? 'rgba(239, 68, 68, 0.5)' : undefined,
                                                         color: isSelected ? '#fca5a5' : undefined
                                                     }}
                                                 >
-                                                    {isSelected && <Ban size={16} />}
-                                                    {s}
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                                        {isSelected && <Ban size={14} />}
+                                                        {s}
+                                                    </div>
+                                                    <span className="text-sm" style={{ opacity: 0.5, fontSize: '0.7rem' }}>
+                                                        {times.start} - {times.end}
+                                                    </span>
                                                 </button>
                                             );
                                         })}
