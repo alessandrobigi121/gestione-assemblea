@@ -532,158 +532,144 @@ export default function Dashboard() {
                     left: 0,
                     right: 0,
                     bottom: 0,
-                    background: 'rgba(0,0,0,0.85)',
-                    backdropFilter: 'blur(12px)',
+                    background: 'rgba(0,0,0,0.7)',
+                    backdropFilter: 'blur(8px)',
                     zIndex: 100,
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center'
                 }}>
-                    <div className="glass-panel" style={{
-                        width: '700px',
-                        padding: '4rem',
-                        background: '#0f172a', // Darker slate
-                        border: '1px solid rgba(255,255,255,0.08)',
-                        boxShadow: '0 40px 80px -20px rgba(0, 0, 0, 0.7)',
-                        maxHeight: '90vh',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        borderRadius: '2rem' // Very round corners
-                    }}>
-                        <div className="flex-row justify-between items-center mb-10 border-b border-slate-800 pb-6">
+                    <div className="glass-panel" style={{ width: '600px', maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
+                        {/* Header */}
+                        <div className="flex-row justify-between items-center" style={{ padding: '1.5rem', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
                             <div>
-                                <h2 className="text-3xl font-bold text-white mb-2">
-                                    Gestione Vincoli
-                                </h2>
-                                <p className="text-slate-400">Impedisci a certe classi di frequentare turni specifici.</p>
+                                <h2 className="text-xl" style={{ marginBottom: '0.25rem' }}>Gestione Vincoli</h2>
+                                <p className="text-sm">Impedisci a certe classi di frequentare turni specifici.</p>
                             </div>
                             <button
                                 onClick={() => setShowConstraintsModal(false)}
-                                className="p-3 hover:bg-slate-800 rounded-full transition-colors cursor-pointer text-slate-400 hover:text-white"
-                                style={{ background: 'transparent', border: 'none' }}
+                                className="glass-panel hover:bg-white/10"
+                                style={{ padding: '0.5rem', cursor: 'pointer', border: 'none' }}
                             >
-                                <X size={28} />
+                                <X size={20} />
                             </button>
                         </div>
 
-                        {/* Add New Constraint */}
-                        <div className="flex-col gap-10 mb-10 p-10 rounded-3xl" style={{ background: 'rgba(30, 41, 59, 0.5)', border: '1px solid rgba(255,255,255,0.05)' }}>
-                            <div className="flex-col gap-4">
-                                <label className="text-sm font-bold text-slate-400 tracking-[0.2em] uppercase">Seleziona Classe</label>
-                                <div className="relative">
-                                    <select
-                                        value={selectedConstraintClass}
-                                        onChange={(e) => setSelectedConstraintClass(e.target.value)}
-                                        className="w-full rounded-2xl outline-none transition-all focus:ring-2 focus:ring-blue-500/50 appearance-none"
-                                        style={{
-                                            height: '4rem',
-                                            padding: '0 1.5rem',
-                                            backgroundColor: '#1e293b',
-                                            color: 'white',
-                                            border: '1px solid #334155',
-                                            fontSize: '1.25rem',
-                                            cursor: 'pointer',
-                                            lineHeight: 'normal'
-                                        }}
-                                    >
-                                        <option value="" style={{ background: '#1e293b', color: 'gray' }}>-- Seleziona una classe --</option>
-                                        {[...manager.getClasses()].sort((a, b) => a.classId.localeCompare(b.classId)).map(c => (
-                                            <option key={c.classId} value={c.classId} style={{ background: '#1e293b', color: 'white' }}>
-                                                {c.classId} ({c.students} studenti)
-                                            </option>
-                                        ))}
-                                    </select>
-                                    {/* Custom Dropdown Arrow */}
-                                    <div className="absolute right-6 top-1/2 transform -translate-y-1/2 pointer-events-none text-slate-400">
-                                        <ChevronDown size={24} />
+                        {/* Body */}
+                        <div style={{ padding: '1.5rem', overflowY: 'auto', flex: 1 }}>
+                            {/* Add Constraint Section */}
+                            <div className="flex-col gap-4" style={{ marginBottom: '2rem' }}>
+                                {/* Class Selector */}
+                                <div className="flex-col gap-2">
+                                    <label className="text-sm">Seleziona Classe:</label>
+                                    <div className="glass-panel" style={{ padding: '0.75rem 1rem' }}>
+                                        <select
+                                            value={selectedConstraintClass}
+                                            onChange={(e) => setSelectedConstraintClass(e.target.value)}
+                                            style={{ background: 'transparent', color: 'white', border: 'none', width: '100%', fontSize: '1rem', cursor: 'pointer' }}
+                                        >
+                                            <option value="" style={{ background: '#1e293b' }}>-- Seleziona --</option>
+                                            {[...manager.getClasses()].sort((a, b) => a.classId.localeCompare(b.classId)).map(c => (
+                                                <option key={c.classId} value={c.classId} style={{ background: '#1e293b' }}>
+                                                    {c.classId} ({c.students} studenti)
+                                                </option>
+                                            ))}
+                                        </select>
                                     </div>
                                 </div>
-                            </div>
 
-                            <div className="flex-col gap-5">
-                                <label className="text-sm font-bold text-slate-400 tracking-[0.2em] uppercase">Turni Vietati</label>
-                                <div className="grid gap-5" style={{ gridTemplateColumns: '1fr 1fr' }}>
-                                    {["Primo turno", "Secondo turno", "Terzo turno", "Quarto turno"].map(s => {
-                                        const isSelected = selectedConstraintShifts.includes(s);
-                                        return (
-                                            <button
-                                                key={s}
-                                                onClick={() => toggleConstraintShift(s)}
-                                                className="rounded-2xl text-xl font-medium transition-all duration-300 cursor-pointer flex items-center justify-center gap-4 shadow-lg group relative overflow-hidden"
-                                                style={{
-                                                    padding: '2rem 1.5rem', // Taller buttons
-                                                    backgroundColor: isSelected ? '#dc2626' : 'rgba(30, 41, 59, 0.6)',
-                                                    color: isSelected ? 'white' : '#cbd5e1',
-                                                    border: isSelected ? '2px solid #ef4444' : '2px solid #475569',
-                                                    transform: isSelected ? 'scale(1.02)' : 'none',
-                                                    boxShadow: isSelected ? '0 0 25px rgba(220, 38, 38, 0.4)' : 'none',
-                                                    letterSpacing: '0.05em' // Tracking wider
-                                                }}
-                                            >
-                                                {/* Hover effect overlay */}
-                                                <div className="absolute inset-0 bg-white/5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
-
-                                                {isSelected ? <Ban size={28} /> : <div style={{ width: 28 }} />}
-                                                <span className="leading-none">{s}</span>
-                                            </button>
-                                        );
-                                    })}
+                                {/* Shift Selection */}
+                                <div className="flex-col gap-2">
+                                    <label className="text-sm">Turni Vietati:</label>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        {["Primo turno", "Secondo turno", "Terzo turno", "Quarto turno"].map(s => {
+                                            const isSelected = selectedConstraintShifts.includes(s);
+                                            return (
+                                                <button
+                                                    key={s}
+                                                    onClick={() => toggleConstraintShift(s)}
+                                                    className="glass-panel"
+                                                    style={{
+                                                        padding: '1rem',
+                                                        cursor: 'pointer',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        justifyContent: 'center',
+                                                        gap: '0.5rem',
+                                                        background: isSelected ? 'rgba(239, 68, 68, 0.2)' : undefined,
+                                                        borderColor: isSelected ? 'rgba(239, 68, 68, 0.5)' : undefined,
+                                                        color: isSelected ? '#fca5a5' : undefined
+                                                    }}
+                                                >
+                                                    {isSelected && <Ban size={16} />}
+                                                    {s}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
                                 </div>
+
+                                {/* Add Button */}
+                                <button
+                                    onClick={addConstraint}
+                                    disabled={!selectedConstraintClass || selectedConstraintShifts.length === 0}
+                                    className="btn btn-primary"
+                                    style={{
+                                        marginTop: '0.5rem',
+                                        opacity: (!selectedConstraintClass || selectedConstraintShifts.length === 0) ? 0.5 : 1,
+                                        cursor: (!selectedConstraintClass || selectedConstraintShifts.length === 0) ? 'not-allowed' : 'pointer'
+                                    }}
+                                >
+                                    <Plus size={18} /> Aggiungi Vincolo
+                                </button>
                             </div>
 
-                            <button
-                                onClick={addConstraint}
-                                disabled={!selectedConstraintClass || selectedConstraintShifts.length === 0}
-                                className="mt-6 p-6 rounded-2xl flex items-center justify-center gap-4 font-bold text-xl transition-all duration-300 cursor-pointer shadow-xl tracking-wide uppercase"
-                                style={{
-                                    background: (!selectedConstraintClass || selectedConstraintShifts.length === 0)
-                                        ? '#334155'
-                                        : 'linear-gradient(135deg, #2563eb, #4f46e5)',
-                                    color: (!selectedConstraintClass || selectedConstraintShifts.length === 0)
-                                        ? '#64748b'
-                                        : 'white',
-                                    border: 'none',
-                                    opacity: (!selectedConstraintClass || selectedConstraintShifts.length === 0) ? 0.5 : 1,
-                                    cursor: (!selectedConstraintClass || selectedConstraintShifts.length === 0) ? 'not-allowed' : 'pointer',
-                                    boxShadow: (!selectedConstraintClass || selectedConstraintShifts.length === 0) ? 'none' : '0 10px 30px -10px rgba(79, 70, 229, 0.5)'
-                                }}
-                            >
-                                <Plus size={32} /> AGGIUNGI VINCOLO
-                            </button>
-                        </div>
+                            {/* Active Constraints List */}
+                            <div className="flex-col gap-2">
+                                <h3 className="text-sm" style={{ marginBottom: '0.5rem' }}>Vincoli Attivi ({Object.keys(constraints).length})</h3>
 
-                        {/* List Existing Limits */}
-                        <div className="flex-col gap-4 flex-1 overflow-hidden">
-                            <h3 className="text-sm font-bold text-slate-500 tracking-widest mb-2">VINCOLI ATTIVI ({Object.keys(constraints).length})</h3>
-                            <div className="flex-col gap-3 pr-2 custom-scrollbar" style={{ overflowY: 'auto' }}>
-                                {Object.keys(constraints).length === 0 && (
-                                    <div className="text-center p-10 text-slate-600 italic border-2 border-dashed border-slate-800 rounded-3xl">
+                                {Object.keys(constraints).length === 0 ? (
+                                    <div className="text-sm" style={{ padding: '2rem', textAlign: 'center', opacity: 0.5, borderStyle: 'dashed', borderWidth: '1px', borderColor: 'rgba(255,255,255,0.1)', borderRadius: 'var(--radius)' }}>
                                         Nessun vincolo impostato.
                                     </div>
-                                )}
-
-                                {Object.entries(constraints).map(([cId, shifts]) => (
-                                    <div key={cId} className="group flex-row justify-between items-center p-4 rounded-2xl transition-all" style={{ background: 'rgba(30, 41, 59, 0.8)', border: '1px solid rgba(51, 65, 85, 0.5)' }}>
-                                        <div className="flex-col gap-2">
-                                            <strong className="text-xl text-white pl-1">{cId}</strong>
-                                            <div className="flex-row gap-2 flex-wrap">
-                                                {shifts.map(s => (
-                                                    <span key={s} className="text-xs px-3 py-1.5 rounded-full font-medium tracking-wide" style={{ background: 'rgba(127, 29, 29, 0.3)', color: '#fca5a5', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
-                                                        {s}
-                                                    </span>
-                                                ))}
+                                ) : (
+                                    <div className="flex-col gap-2">
+                                        {Object.entries(constraints).map(([cId, shiftList]) => (
+                                            <div key={cId} className="glass-panel flex-row justify-between items-center" style={{ padding: '0.75rem 1rem' }}>
+                                                <div className="flex-col gap-1">
+                                                    <strong>{cId}</strong>
+                                                    <div className="flex-row gap-2" style={{ flexWrap: 'wrap' }}>
+                                                        {shiftList.map(s => (
+                                                            <span key={s} className="text-sm" style={{
+                                                                padding: '0.25rem 0.5rem',
+                                                                background: 'rgba(239, 68, 68, 0.1)',
+                                                                borderRadius: '4px',
+                                                                color: '#fca5a5',
+                                                                fontSize: '0.75rem'
+                                                            }}>
+                                                                {s}
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                                <button
+                                                    onClick={() => removeConstraint(cId)}
+                                                    className="glass-panel hover:bg-white/10"
+                                                    style={{
+                                                        padding: '0.5rem',
+                                                        cursor: 'pointer',
+                                                        background: 'rgba(239, 68, 68, 0.1)',
+                                                        borderColor: 'rgba(239, 68, 68, 0.3)',
+                                                        color: '#fca5a5'
+                                                    }}
+                                                    title="Rimuovi"
+                                                >
+                                                    <Trash2 size={16} />
+                                                </button>
                                             </div>
-                                        </div>
-                                        <button
-                                            onClick={() => removeConstraint(cId)}
-                                            className="p-3 text-slate-500 hover:text-red-400 hover:bg-red-400/10 rounded-xl transition-all cursor-pointer"
-                                            title="Rimuovi vincolo"
-                                            style={{ background: 'transparent', border: 'none' }}
-                                        >
-                                            <Trash2 size={22} />
-                                        </button>
+                                        ))}
                                     </div>
-                                ))}
+                                )}
                             </div>
                         </div>
                     </div>
