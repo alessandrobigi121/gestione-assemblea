@@ -33,6 +33,12 @@ const SEATS_CONFIG: { [row: string]: { left: number; right: number } } = {
     "S": { left: 10, right: 9 },
 };
 
+// Seats that don't exist (disabled area, pillars, etc.)
+const EXCLUDED_SEATS: { [row: string]: number[] } = {
+    "D": [13, 14, 15, 16, 17, 18],  // Disabled seating area
+    "S": [1, 11, 12, 19, 20, 30],   // Pillars
+};
+
 const COLORS = [
     "#ef4444", "#f97316", "#f59e0b", "#eab308", "#84cc16",
     "#22c55e", "#14b8a6", "#06b6d4", "#0ea5e9", "#3b82f6",
@@ -101,6 +107,7 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
 
         const seatKey = (row: string, seat: number) => `${row}-${seat}`;
         const isFree = (row: string, seat: number) => !occupied.has(seatKey(row, seat));
+        const isExcluded = (row: string, seat: number) => EXCLUDED_SEATS[row]?.includes(seat) ?? false;
 
         // Try to assign a class to seats on one side
         const tryAssign = (cls: AssemblyEntry, side: "left" | "right"): boolean => {
@@ -114,6 +121,9 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
                 const endSeat = side === "left" ? maxSeats : 15 + maxSeats;
 
                 for (let seat = startSeat; seat <= endSeat && seatsAssigned < seatsNeeded; seat++) {
+                    // Skip excluded seats (disabled area, pillars)
+                    if (isExcluded(row, seat)) continue;
+
                     if (isFree(row, seat)) {
                         tempAssignments.push({
                             row,
