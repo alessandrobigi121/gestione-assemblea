@@ -10,11 +10,11 @@ interface SeatingMapProps {
     onClose: () => void;
 }
 
-// Row groups - classes cannot be split across groups
-const ROW_GROUPS = [
-    ["A", "B", "C"],
-    ["D", "E", "F", "G", "H", "I", "L"],
-    ["M", "N", "O", "P", "Q", "R", "S"]
+// Row groups with fixed capacities per side
+const BLOCKS = [
+    { name: "ABC", rows: ["A", "B", "C"], leftCapacity: 45, rightCapacity: 45 },
+    { name: "DEFGHIL", rows: ["D", "E", "F", "G", "H", "I", "L"], leftCapacity: 102, rightCapacity: 102 },
+    { name: "MNOPQRS", rows: ["M", "N", "O", "P", "Q", "R", "S"], leftCapacity: 102, rightCapacity: 102 },
 ];
 
 const ROWS = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "L", "M", "N", "O", "P", "Q", "R", "S"];
@@ -55,14 +55,76 @@ interface SeatAssignment {
     color: string;
 }
 
-// Calculate how many seats available from a starting row using max 2 rows
-const getCapacityFrom2Rows = (group: string[], startIdx: number, side: "left" | "right"): number => {
-    let total = 0;
-    for (let i = startIdx; i < Math.min(startIdx + 2, group.length); i++) {
-        total += SEATS_CONFIG[group[i]][side].length;
+interface Bin {
+    blockIdx: number;
+    side: "left" | "right";
+    capacity: number;
+    classes: AssemblyEntry[];
+    usedCapacity: number;
+}
+
+// Find best combination of classes to fill bins optimally
+function findBestAssignment(classes: AssemblyEntry[], bins: Bin[]): { assigned: Map<string, Bin>; unassigned: AssemblyEntry[] } {
+    const assigned = new Map<string, Bin>();
+    const unassigned: AssemblyEntry[] = [];
+
+    // Sort classes by size descending
+    const sortedClasses = [...classes].sort((a, b) => (b.students + 1) - (a.students + 1));
+
+    // Reset bins
+    bins.forEach(bin => {
+        bin.classes = [];
+        bin.usedCapacity = 0;
+    });
+
+    // First pass: try to fit larger classes
+    for (const cls of sortedClasses) {
+        const seatsNeeded = cls.students + 1;
+
+        // Find bin with best fit (smallest remaining space after adding)
+        let bestBin: Bin | null = null;
+        let bestRemaining = Infinity;
+
+        for (const bin of bins) {
+            const remaining = bin.capacity - bin.usedCapacity - seatsNeeded;
+            // Must fit and prefer bins that get filled more completely
+            if (remaining >= 0 && remaining < bestRemaining) {
+                bestBin = bin;
+                bestRemaining = remaining;
+            }
+        }
+
+        if (bestBin) {
+            bestBin.classes.push(cls);
+            bestBin.usedCapacity += seatsNeeded;
+            assigned.set(cls.classId, bestBin);
+        } else {
+            unassigned.push(cls);
+        }
     }
-    return total;
-};
+
+    // If we have unassigned classes, try to swap to make room
+    if (unassigned.length > 0) {
+        // Try swapping small classes between bins to make room
+        for (let i = unassigned.length - 1; i >= 0; i--) {
+            const cls = unassigned[i];
+            const seatsNeeded = cls.students + 1;
+
+            // Find any bin with enough space
+            for (const bin of bins) {
+                if (bin.capacity - bin.usedCapacity >= seatsNeeded) {
+                    bin.classes.push(cls);
+                    bin.usedCapacity += seatsNeeded;
+                    assigned.set(cls.classId, bin);
+                    unassigned.splice(i, 1);
+                    break;
+                }
+            }
+        }
+    }
+
+    return { assigned, unassigned };
+}
 
 export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMapProps) {
     const [selectedShift, setSelectedShift] = useState(initialShift);
@@ -107,109 +169,53 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
         });
         setClassColors(colors);
 
-        // Create slots: each slot is a pair of 2 consecutive rows on one side
-        interface Slot {
-            groupIdx: number;
-            rowStart: number;
-            side: "left" | "right";
-            capacity: number;
-            classes: AssemblyEntry[];
-            usedCapacity: number;
-        }
-
-        const slots: Slot[] = [];
-
-        ROW_GROUPS.forEach((group, groupIdx) => {
-            // Create slots for each pair of rows (overlapping)
-            for (let i = 0; i < group.length; i += 2) {
-                const leftCap = getCapacityFrom2Rows(group, i, "left");
-                const rightCap = getCapacityFrom2Rows(group, i, "right");
-
-                if (leftCap > 0) {
-                    slots.push({
-                        groupIdx,
-                        rowStart: i,
-                        side: "left",
-                        capacity: leftCap,
-                        classes: [],
-                        usedCapacity: 0
-                    });
-                }
-                if (rightCap > 0) {
-                    slots.push({
-                        groupIdx,
-                        rowStart: i,
-                        side: "right",
-                        capacity: rightCap,
-                        classes: [],
-                        usedCapacity: 0
-                    });
-                }
-            }
+        // Create bins from blocks
+        const bins: Bin[] = [];
+        BLOCKS.forEach((block, blockIdx) => {
+            bins.push({
+                blockIdx,
+                side: "left",
+                capacity: block.leftCapacity,
+                classes: [],
+                usedCapacity: 0
+            });
+            bins.push({
+                blockIdx,
+                side: "right",
+                capacity: block.rightCapacity,
+                classes: [],
+                usedCapacity: 0
+            });
         });
 
-        // Sort classes by size (smallest first for better packing)
-        const sortedClasses = [...classes].sort((a, b) => (a.students + 1) - (b.students + 1));
+        // Find best assignment
+        const { assigned, unassigned } = findBestAssignment(classes, bins);
 
-        // Use First Fit Decreasing algorithm
-        const largestFirst = [...sortedClasses].reverse();
-        const unassigned: AssemblyEntry[] = [];
-
-        for (const cls of largestFirst) {
-            const seatsNeeded = cls.students + 1;
-
-            // Find the best slot (one with least remaining space after adding this class)
-            let bestSlot: Slot | null = null;
-            let bestRemaining = Infinity;
-
-            for (const slot of slots) {
-                const remaining = slot.capacity - slot.usedCapacity - seatsNeeded;
-                if (remaining >= 0 && remaining < bestRemaining) {
-                    bestSlot = slot;
-                    bestRemaining = remaining;
-                }
-            }
-
-            if (bestSlot) {
-                bestSlot.classes.push(cls);
-                bestSlot.usedCapacity += seatsNeeded;
-            } else {
-                unassigned.push(cls);
-            }
-        }
-
-        // Now assign actual seats based on slot assignments
+        // Now assign actual seats
         const occupied: Set<string> = new Set();
         const newAssignments: SeatAssignment[] = [];
         const seatKey = (row: string, seat: number) => `${row}-${seat}`;
 
-        // Sort slots by group and row for proper assignment order
-        slots.sort((a, b) => {
-            if (a.groupIdx !== b.groupIdx) return a.groupIdx - b.groupIdx;
-            if (a.rowStart !== b.rowStart) return a.rowStart - b.rowStart;
-            return a.side === "left" ? -1 : 1;
-        });
+        // Process bins in order
+        for (const bin of bins) {
+            const block = BLOCKS[bin.blockIdx];
 
-        for (const slot of slots) {
-            const group = ROW_GROUPS[slot.groupIdx];
-
-            // Get all seats for this slot (2 consecutive rows on one side)
-            const slotSeats: { row: string; seat: number }[] = [];
-            for (let i = slot.rowStart; i < Math.min(slot.rowStart + 2, group.length); i++) {
-                const row = group[i];
-                for (const seat of SEATS_CONFIG[row][slot.side]) {
+            // Get all available seats for this bin
+            const binSeats: { row: string; seat: number }[] = [];
+            for (const row of block.rows) {
+                for (const seat of SEATS_CONFIG[row][bin.side]) {
                     if (!occupied.has(seatKey(row, seat))) {
-                        slotSeats.push({ row, seat });
+                        binSeats.push({ row, seat });
                     }
                 }
             }
 
-            // Assign seats to each class in this slot
+            // Assign seats to classes in this bin
             let seatIndex = 0;
-            for (const cls of slot.classes) {
+            for (const cls of bin.classes) {
                 const seatsNeeded = cls.students + 1;
-                for (let i = 0; i < seatsNeeded && seatIndex < slotSeats.length; i++) {
-                    const { row, seat } = slotSeats[seatIndex++];
+                for (let i = 0; i < seatsNeeded && seatIndex < binSeats.length; i++) {
+                    const { row, seat } = binSeats[seatIndex++];
                     occupied.add(seatKey(row, seat));
                     newAssignments.push({
                         row,
