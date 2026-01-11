@@ -77,20 +77,40 @@ function findBestAssignment(classes: AssemblyEntry[], bins: Bin[]): { assigned: 
         bin.usedCapacity = 0;
     });
 
-    // First pass: try to fit larger classes
+    // Separate bins by side for alternating assignment
+    const leftBins = bins.filter(b => b.side === "left");
+    const rightBins = bins.filter(b => b.side === "right");
+
+    // Alternate between left and right when assigning
+    let useLeft = true;
+
     for (const cls of sortedClasses) {
         const seatsNeeded = cls.students + 1;
 
-        // Find bin with best fit (smallest remaining space after adding)
+        // Try the current side first, then the other
+        const primaryBins = useLeft ? leftBins : rightBins;
+        const secondaryBins = useLeft ? rightBins : leftBins;
+
+        // Find best fit in primary bins
         let bestBin: Bin | null = null;
         let bestRemaining = Infinity;
 
-        for (const bin of bins) {
+        for (const bin of primaryBins) {
             const remaining = bin.capacity - bin.usedCapacity - seatsNeeded;
-            // Must fit and prefer bins that get filled more completely
             if (remaining >= 0 && remaining < bestRemaining) {
                 bestBin = bin;
                 bestRemaining = remaining;
+            }
+        }
+
+        // If not found in primary, try secondary
+        if (!bestBin) {
+            for (const bin of secondaryBins) {
+                const remaining = bin.capacity - bin.usedCapacity - seatsNeeded;
+                if (remaining >= 0 && remaining < bestRemaining) {
+                    bestBin = bin;
+                    bestRemaining = remaining;
+                }
             }
         }
 
@@ -98,6 +118,8 @@ function findBestAssignment(classes: AssemblyEntry[], bins: Bin[]): { assigned: 
             bestBin.classes.push(cls);
             bestBin.usedCapacity += seatsNeeded;
             assigned.set(cls.classId, bestBin);
+            // Alternate side for next class
+            useLeft = !useLeft;
         } else {
             unassigned.push(cls);
         }
