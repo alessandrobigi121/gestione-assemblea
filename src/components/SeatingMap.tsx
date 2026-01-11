@@ -19,13 +19,13 @@ const ROW_GROUPS = [
 
 const ROWS = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "L", "M", "N", "O", "P", "Q", "R", "S"];
 
-// Seats per side for each row
+// Available seats per row and side
 const SEATS_CONFIG: { [row: string]: { left: number[]; right: number[] } } = {
     "A": { left: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], right: [16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30] },
     "B": { left: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], right: [16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30] },
     "C": { left: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], right: [16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30] },
-    "D": { left: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], right: [19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30] }, // 13-18 excluded (disabled)
-    "E": { left: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], right: [16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27] },
+    "D": { left: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], right: [19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30] }, // 13-18 excluded (disabled area)
+    "E": { left: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], right: [16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30] },
     "F": { left: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], right: [16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30] },
     "G": { left: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], right: [16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30] },
     "H": { left: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], right: [16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30] },
@@ -37,7 +37,7 @@ const SEATS_CONFIG: { [row: string]: { left: number[]; right: number[] } } = {
     "P": { left: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], right: [16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30] },
     "Q": { left: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], right: [16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30] },
     "R": { left: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], right: [16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30] },
-    "S": { left: [2, 3, 4, 5, 6, 7, 8, 9, 10], right: [16, 17, 18, 21, 22, 23, 24, 25, 26, 27, 28, 29] }, // 1,11,12,19,20,30 excluded (pillars)
+    "S": { left: [2, 3, 4, 5, 6, 7, 8, 9, 10, 13, 14, 15], right: [16, 17, 18, 21, 22, 23, 24, 25, 26, 27, 28, 29] }, // 1,11,12,19,20,30 excluded (pillars)
 };
 
 const COLORS = [
@@ -109,7 +109,7 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
         const seatKey = (row: string, seat: number) => `${row}-${seat}`;
         const isFree = (row: string, seat: number) => !occupied.has(seatKey(row, seat));
 
-        // Get all available seats for a group on one side
+        // Get all available seats for a group on one side (in order)
         const getGroupSeats = (group: string[], side: "left" | "right"): { row: string; seat: number }[] => {
             const seats: { row: string; seat: number }[] = [];
             for (const row of group) {
@@ -152,33 +152,36 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
             return true;
         };
 
-        // Track which side to use next for each group
-        const groupSides: { [groupIndex: number]: "left" | "right" } = {
-            0: "left",
-            1: "left",
-            2: "left"
-        };
+        // Process classes - fill left side of a group, then right side, alternating per class
+        let currentGroupIndex = 0;
+        let currentSide: "left" | "right" = "left";
 
-        // Assign each class
         sortedClasses.forEach(cls => {
             let assigned = false;
 
-            // Try each group in order
-            for (let g = 0; g < ROW_GROUPS.length && !assigned; g++) {
-                const group = ROW_GROUPS[g];
-                const currentSide = groupSides[g];
+            // Try current group and side first
+            for (let attempts = 0; attempts < ROW_GROUPS.length * 2 && !assigned; attempts++) {
+                const group = ROW_GROUPS[currentGroupIndex];
 
-                // Try current side first
                 if (tryAssignInGroup(cls, group, currentSide)) {
-                    // Alternate side for next class in this group
-                    groupSides[g] = currentSide === "left" ? "right" : "left";
                     assigned = true;
+                    // Alternate side for next class
+                    if (currentSide === "left") {
+                        currentSide = "right";
+                    } else {
+                        currentSide = "left";
+                    }
                 } else {
-                    // Try the other side
+                    // Try other side of same group
                     const otherSide = currentSide === "left" ? "right" : "left";
                     if (tryAssignInGroup(cls, group, otherSide)) {
-                        // Keep same preference for next class (since we used the fallback)
                         assigned = true;
+                        // Set next side to the opposite of what we just used
+                        currentSide = currentSide; // Keep trying the same side preference
+                    } else {
+                        // Move to next group
+                        currentGroupIndex = (currentGroupIndex + 1) % ROW_GROUPS.length;
+                        currentSide = "left"; // Reset to left for new group
                     }
                 }
             }
@@ -211,7 +214,6 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
             if (!rowGroup) return;
 
             // Find all elements with path inside this row group
-            // We need to check serif:id attribute for the seat number
             const allElements = rowGroup.querySelectorAll('g, path');
 
             allElements.forEach(el => {
