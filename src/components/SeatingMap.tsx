@@ -169,31 +169,33 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
             const rowGroup = doc.getElementById(row);
             if (!rowGroup) return;
 
-            // Find all seat elements in this row
-            // They have IDs like "_1", "_2", ... "_30"
-            for (let seat = 1; seat <= 30; seat++) {
-                const seatId = `_${seat}`;
-                const color = seatColorMap.get(`${row}-${seat}`);
+            // Find all elements with path inside this row group
+            // We need to check serif:id attribute for the seat number
+            const allElements = rowGroup.querySelectorAll('g, path');
 
-                if (color) {
-                    // Find element with this ID within the row group
-                    const seatElement = rowGroup.querySelector(`#${CSS.escape(seatId)}`);
+            allElements.forEach(el => {
+                // Get the serif:id attribute which has the real seat number
+                const serifId = el.getAttribute('serif:id');
+                if (!serifId) return;
 
-                    if (seatElement) {
-                        // It could be a <g> containing a <path> or a <path> directly
-                        const pathElement = seatElement.tagName === 'path'
-                            ? seatElement
-                            : seatElement.querySelector('path');
+                const seatNum = parseInt(serifId);
+                if (isNaN(seatNum) || seatNum < 1 || seatNum > 30) return;
 
-                        if (pathElement) {
-                            // Change fill color
-                            const currentStyle = pathElement.getAttribute("style") || "";
-                            const newStyle = currentStyle.replace("fill:none", `fill:${color}`);
-                            pathElement.setAttribute("style", newStyle);
-                        }
-                    }
+                const color = seatColorMap.get(`${row}-${seatNum}`);
+                if (!color) return;
+
+                // Find the path element (either this element or child)
+                const pathElement = el.tagName === 'path'
+                    ? el
+                    : el.querySelector('path');
+
+                if (pathElement) {
+                    // Change fill color
+                    const currentStyle = pathElement.getAttribute("style") || "";
+                    const newStyle = currentStyle.replace("fill:none", `fill:${color}`);
+                    pathElement.setAttribute("style", newStyle);
                 }
-            }
+            });
         });
 
         // Serialize back to string
