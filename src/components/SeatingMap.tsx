@@ -12,9 +12,9 @@ interface SeatingMapProps {
 
 // Row groups - classes cannot be split across groups
 const ROW_GROUPS = [
-    ["A", "B", "C"],           // Group 1 (front)
-    ["D", "E", "F", "G", "H", "I", "L"],  // Group 2 (middle)
-    ["M", "N", "O", "P", "Q", "R", "S"]   // Group 3 (back)
+    ["A", "B", "C"],           // Group 1 (front) - 45 seats per side
+    ["D", "E", "F", "G", "H", "I", "L"],  // Group 2 (middle) - 117 left, 114 right
+    ["M", "N", "O", "P", "Q", "R", "S"]   // Group 3 (back) - 102 left, 99 right
 ];
 
 const ROWS = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "L", "M", "N", "O", "P", "Q", "R", "S"];
@@ -24,7 +24,7 @@ const SEATS_CONFIG: { [row: string]: { left: number[]; right: number[] } } = {
     "A": { left: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], right: [16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30] },
     "B": { left: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], right: [16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30] },
     "C": { left: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], right: [16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30] },
-    "D": { left: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], right: [19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30] }, // 13-18 excluded (disabled area)
+    "D": { left: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], right: [19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30] },
     "E": { left: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], right: [16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30] },
     "F": { left: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], right: [16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30] },
     "G": { left: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], right: [16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30] },
@@ -37,7 +37,7 @@ const SEATS_CONFIG: { [row: string]: { left: number[]; right: number[] } } = {
     "P": { left: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], right: [16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30] },
     "Q": { left: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], right: [16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30] },
     "R": { left: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], right: [16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30] },
-    "S": { left: [2, 3, 4, 5, 6, 7, 8, 9, 10, 13, 14, 15], right: [16, 17, 18, 21, 22, 23, 24, 25, 26, 27, 28, 29] }, // 1,11,12,19,20,30 excluded (pillars)
+    "S": { left: [2, 3, 4, 5, 6, 7, 8, 9, 10, 13, 14, 15], right: [16, 17, 18, 21, 22, 23, 24, 25, 26, 27, 28, 29] },
 };
 
 const COLORS = [
@@ -55,6 +55,11 @@ interface SeatAssignment {
     color: string;
 }
 
+// Calculate total seats in a group for a side
+const getGroupCapacity = (group: string[], side: "left" | "right"): number => {
+    return group.reduce((total, row) => total + SEATS_CONFIG[row][side].length, 0);
+};
+
 export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMapProps) {
     const [selectedShift, setSelectedShift] = useState(initialShift);
     const [assignments, setAssignments] = useState<SeatAssignment[]>([]);
@@ -65,7 +70,6 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
 
     const shiftNames = ["Primo turno", "Secondo turno", "Terzo turno", "Quarto turno"];
 
-    // Load SVG on mount
     useEffect(() => {
         fetch("/planimetria.svg")
             .then(res => res.text())
@@ -73,12 +77,10 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
             .catch(err => console.error("Error loading SVG:", err));
     }, []);
 
-    // Auto-assign when shift changes
     useEffect(() => {
         autoAssignSeats();
     }, [selectedShift, shifts]);
 
-    // Update SVG when assignments change
     useEffect(() => {
         if (svgContent) {
             updateSvgColors();
@@ -94,20 +96,80 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
             return;
         }
 
-        const sortedClasses = [...classes].sort((a, b) => a.classId.localeCompare(b.classId));
+        // Sort classes by size (students + 1 for professor) descending for better packing
+        const sortedClasses = [...classes].sort((a, b) => (b.students + 1) - (a.students + 1));
 
         const colors: { [classId: string]: string } = {};
-        sortedClasses.forEach((cls, i) => {
+        classes.forEach((cls, i) => {
             colors[cls.classId] = COLORS[i % COLORS.length];
         });
         setClassColors(colors);
 
+        // Calculate block capacities
+        interface Block {
+            group: string[];
+            side: "left" | "right";
+            capacity: number;
+            classes: AssemblyEntry[];
+            usedSeats: number;
+        }
+
+        const blocks: Block[] = [];
+
+        // Create blocks: alternating left/right for each group
+        ROW_GROUPS.forEach(group => {
+            blocks.push({
+                group,
+                side: "left",
+                capacity: getGroupCapacity(group, "left"),
+                classes: [],
+                usedSeats: 0
+            });
+            blocks.push({
+                group,
+                side: "right",
+                capacity: getGroupCapacity(group, "right"),
+                classes: [],
+                usedSeats: 0
+            });
+        });
+
+        // Phase 1: Bin packing - assign classes to blocks
+        const unassigned: AssemblyEntry[] = [];
+        const assignedClassIds = new Set<string>();
+
+        // Try to fit classes into blocks, alternating left/right
+        let blockIndex = 0;
+
+        for (const cls of sortedClasses) {
+            const seatsNeeded = cls.students + 1;
+            let assigned = false;
+
+            // Try all blocks starting from current position
+            for (let i = 0; i < blocks.length && !assigned; i++) {
+                const tryIndex = (blockIndex + i) % blocks.length;
+                const block = blocks[tryIndex];
+
+                if (block.usedSeats + seatsNeeded <= block.capacity) {
+                    block.classes.push(cls);
+                    block.usedSeats += seatsNeeded;
+                    assignedClassIds.add(cls.classId);
+                    assigned = true;
+                    // Move to next block for alternating pattern
+                    blockIndex = (tryIndex + 1) % blocks.length;
+                }
+            }
+
+            if (!assigned) {
+                unassigned.push(cls);
+            }
+        }
+
+        // Phase 2: Assign actual seats based on block assignments
         const occupied: Set<string> = new Set();
         const newAssignments: SeatAssignment[] = [];
-        const notAssigned: string[] = [];
 
         const seatKey = (row: string, seat: number) => `${row}-${seat}`;
-        const isFree = (row: string, seat: number) => !occupied.has(seatKey(row, seat));
 
         // Get all available seats for a group on one side (in order)
         const getGroupSeats = (group: string[], side: "left" | "right"): { row: string; seat: number }[] => {
@@ -115,7 +177,7 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
             for (const row of group) {
                 const seatNumbers = SEATS_CONFIG[row][side];
                 for (const seat of seatNumbers) {
-                    if (isFree(row, seat)) {
+                    if (!occupied.has(seatKey(row, seat))) {
                         seats.push({ row, seat });
                     }
                 }
@@ -123,101 +185,47 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
             return seats;
         };
 
-        // Try to assign a class within a specific group and side
-        const tryAssignInGroup = (
-            cls: AssemblyEntry,
-            group: string[],
-            side: "left" | "right"
-        ): boolean => {
-            const seatsNeeded = cls.students + 1; // +1 for professor
-            const availableSeats = getGroupSeats(group, side);
+        // Assign seats for each block's classes
+        for (const block of blocks) {
+            for (const cls of block.classes) {
+                const seatsNeeded = cls.students + 1;
+                const availableSeats = getGroupSeats(block.group, block.side);
+                const assignedSeats = availableSeats.slice(0, seatsNeeded);
 
-            if (availableSeats.length < seatsNeeded) {
-                return false;
-            }
-
-            // Take the first seatsNeeded seats
-            const assignedSeats = availableSeats.slice(0, seatsNeeded);
-
-            assignedSeats.forEach(({ row, seat }) => {
-                occupied.add(seatKey(row, seat));
-                newAssignments.push({
-                    row,
-                    seat,
-                    classId: cls.classId,
-                    color: colors[cls.classId]
+                assignedSeats.forEach(({ row, seat }) => {
+                    occupied.add(seatKey(row, seat));
+                    newAssignments.push({
+                        row,
+                        seat,
+                        classId: cls.classId,
+                        color: colors[cls.classId]
+                    });
                 });
-            });
-
-            return true;
-        };
-
-        // Process classes - fill left side of a group, then right side, alternating per class
-        let currentGroupIndex = 0;
-        let currentSide: "left" | "right" = "left";
-
-        sortedClasses.forEach(cls => {
-            let assigned = false;
-
-            // Try current group and side first
-            for (let attempts = 0; attempts < ROW_GROUPS.length * 2 && !assigned; attempts++) {
-                const group = ROW_GROUPS[currentGroupIndex];
-
-                if (tryAssignInGroup(cls, group, currentSide)) {
-                    assigned = true;
-                    // Alternate side for next class
-                    if (currentSide === "left") {
-                        currentSide = "right";
-                    } else {
-                        currentSide = "left";
-                    }
-                } else {
-                    // Try other side of same group
-                    const otherSide = currentSide === "left" ? "right" : "left";
-                    if (tryAssignInGroup(cls, group, otherSide)) {
-                        assigned = true;
-                        // Set next side to the opposite of what we just used
-                        currentSide = currentSide; // Keep trying the same side preference
-                    } else {
-                        // Move to next group
-                        currentGroupIndex = (currentGroupIndex + 1) % ROW_GROUPS.length;
-                        currentSide = "left"; // Reset to left for new group
-                    }
-                }
             }
-
-            if (!assigned) {
-                notAssigned.push(cls.classId);
-            }
-        });
+        }
 
         setAssignments(newAssignments);
-        setUnassignedClasses(notAssigned);
+        setUnassignedClasses(unassigned.map(c => c.classId));
     };
 
     const updateSvgColors = () => {
         if (!svgContent) return;
 
-        // Create a map: row-seat -> color
         const seatColorMap = new Map<string, string>();
         assignments.forEach(a => {
             seatColorMap.set(`${a.row}-${a.seat}`, a.color);
         });
 
-        // Parse the SVG
         const parser = new DOMParser();
         const doc = parser.parseFromString(svgContent, "image/svg+xml");
 
-        // For each row, find the group and color the seats
         ROWS.forEach(row => {
             const rowGroup = doc.getElementById(row);
             if (!rowGroup) return;
 
-            // Find all elements with path inside this row group
             const allElements = rowGroup.querySelectorAll('g, path');
 
             allElements.forEach(el => {
-                // Get the serif:id attribute which has the real seat number
                 const serifId = el.getAttribute('serif:id');
                 if (!serifId) return;
 
@@ -227,13 +235,11 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
                 const color = seatColorMap.get(`${row}-${seatNum}`);
                 if (!color) return;
 
-                // Find the path element (either this element or child)
                 const pathElement = el.tagName === 'path'
                     ? el
                     : el.querySelector('path');
 
                 if (pathElement) {
-                    // Change fill color
                     const currentStyle = pathElement.getAttribute("style") || "";
                     const newStyle = currentStyle.replace("fill:none", `fill:${color}`);
                     pathElement.setAttribute("style", newStyle);
@@ -241,7 +247,6 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
             });
         });
 
-        // Serialize back to string
         const serializer = new XMLSerializer();
         const newSvg = serializer.serializeToString(doc);
         setModifiedSvg(newSvg);
@@ -277,7 +282,6 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
                 borderRadius: '12px',
                 overflow: 'hidden'
             }}>
-                {/* Header */}
                 <div style={{
                     padding: '1rem 1.5rem',
                     borderBottom: '1px solid #e5e7eb',
@@ -347,13 +351,11 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
                     </div>
                 </div>
 
-                {/* Content */}
                 <div style={{
                     flex: 1,
                     display: 'flex',
                     overflow: 'hidden'
                 }}>
-                    {/* SVG Map */}
                     <div style={{
                         flex: 1,
                         overflow: 'auto',
@@ -375,7 +377,6 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
                         )}
                     </div>
 
-                    {/* Legend */}
                     <div style={{
                         width: '220px',
                         borderLeft: '1px solid #e5e7eb',
