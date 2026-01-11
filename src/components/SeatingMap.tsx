@@ -323,7 +323,7 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
                         {modifiedSvg ? (
                             <div
                                 dangerouslySetInnerHTML={{ __html: modifiedSvg }}
-                                style={{ maxWidth: '100%', height: 'auto' }}
+                                style={{ width: '100%', minWidth: '900px', height: 'auto' }}
                             />
                         ) : (
                             <div style={{ padding: '2rem', color: '#6b7280' }}>
