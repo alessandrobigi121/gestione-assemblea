@@ -10,33 +10,34 @@ interface SeatingMapProps {
     onClose: () => void;
 }
 
+// Row groups - classes cannot be split across groups
+const ROW_GROUPS = [
+    ["A", "B", "C"],           // Group 1 (front)
+    ["D", "E", "F", "G", "H", "I", "L"],  // Group 2 (middle)
+    ["M", "N", "O", "P", "Q", "R", "S"]   // Group 3 (back)
+];
+
 const ROWS = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "L", "M", "N", "O", "P", "Q", "R", "S"];
 
-// Seats per side for each row (left = 1-15, right = 16-30)
-const SEATS_CONFIG: { [row: string]: { left: number; right: number } } = {
-    "A": { left: 15, right: 15 },
-    "B": { left: 15, right: 15 },
-    "C": { left: 15, right: 15 },
-    "D": { left: 12, right: 12 },
-    "E": { left: 15, right: 12 },
-    "F": { left: 15, right: 15 },
-    "G": { left: 15, right: 15 },
-    "H": { left: 15, right: 15 },
-    "I": { left: 15, right: 15 },
-    "L": { left: 15, right: 15 },
-    "M": { left: 15, right: 15 },
-    "N": { left: 15, right: 15 },
-    "O": { left: 15, right: 15 },
-    "P": { left: 15, right: 15 },
-    "Q": { left: 15, right: 15 },
-    "R": { left: 15, right: 15 },
-    "S": { left: 10, right: 9 },
-};
-
-// Seats that don't exist (disabled area, pillars, etc.)
-const EXCLUDED_SEATS: { [row: string]: number[] } = {
-    "D": [13, 14, 15, 16, 17, 18],  // Disabled seating area
-    "S": [1, 11, 12, 19, 20, 30],   // Pillars
+// Seats per side for each row
+const SEATS_CONFIG: { [row: string]: { left: number[]; right: number[] } } = {
+    "A": { left: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], right: [16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30] },
+    "B": { left: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], right: [16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30] },
+    "C": { left: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], right: [16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30] },
+    "D": { left: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], right: [19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30] }, // 13-18 excluded (disabled)
+    "E": { left: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], right: [16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27] },
+    "F": { left: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], right: [16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30] },
+    "G": { left: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], right: [16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30] },
+    "H": { left: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], right: [16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30] },
+    "I": { left: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], right: [16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30] },
+    "L": { left: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], right: [16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30] },
+    "M": { left: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], right: [16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30] },
+    "N": { left: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], right: [16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30] },
+    "O": { left: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], right: [16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30] },
+    "P": { left: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], right: [16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30] },
+    "Q": { left: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], right: [16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30] },
+    "R": { left: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], right: [16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30] },
+    "S": { left: [2, 3, 4, 5, 6, 7, 8, 9, 10], right: [16, 17, 18, 21, 22, 23, 24, 25, 26, 27, 28, 29] }, // 1,11,12,19,20,30 excluded (pillars)
 };
 
 const COLORS = [
@@ -107,53 +108,83 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
 
         const seatKey = (row: string, seat: number) => `${row}-${seat}`;
         const isFree = (row: string, seat: number) => !occupied.has(seatKey(row, seat));
-        const isExcluded = (row: string, seat: number) => EXCLUDED_SEATS[row]?.includes(seat) ?? false;
 
-        // Try to assign a class to seats on one side
-        const tryAssign = (cls: AssemblyEntry, side: "left" | "right"): boolean => {
-            const seatsNeeded = cls.students + 1; // +1 for professor
-            let seatsAssigned = 0;
-            const tempAssignments: SeatAssignment[] = [];
-
-            for (const row of ROWS) {
-                const maxSeats = SEATS_CONFIG[row][side];
-                const startSeat = side === "left" ? 1 : 16;
-                const endSeat = side === "left" ? maxSeats : 15 + maxSeats;
-
-                for (let seat = startSeat; seat <= endSeat && seatsAssigned < seatsNeeded; seat++) {
-                    // Skip excluded seats (disabled area, pillars)
-                    if (isExcluded(row, seat)) continue;
-
+        // Get all available seats for a group on one side
+        const getGroupSeats = (group: string[], side: "left" | "right"): { row: string; seat: number }[] => {
+            const seats: { row: string; seat: number }[] = [];
+            for (const row of group) {
+                const seatNumbers = SEATS_CONFIG[row][side];
+                for (const seat of seatNumbers) {
                     if (isFree(row, seat)) {
-                        tempAssignments.push({
-                            row,
-                            seat,
-                            classId: cls.classId,
-                            color: colors[cls.classId]
-                        });
-                        seatsAssigned++;
+                        seats.push({ row, seat });
                     }
                 }
-
-                if (seatsAssigned >= seatsNeeded) break;
             }
-
-            if (seatsAssigned >= seatsNeeded) {
-                tempAssignments.forEach(a => {
-                    occupied.add(seatKey(a.row, a.seat));
-                    newAssignments.push(a);
-                });
-                return true;
-            }
-            return false;
+            return seats;
         };
 
-        // Assign each class - try left side first, then right
+        // Try to assign a class within a specific group and side
+        const tryAssignInGroup = (
+            cls: AssemblyEntry,
+            group: string[],
+            side: "left" | "right"
+        ): boolean => {
+            const seatsNeeded = cls.students + 1; // +1 for professor
+            const availableSeats = getGroupSeats(group, side);
+
+            if (availableSeats.length < seatsNeeded) {
+                return false;
+            }
+
+            // Take the first seatsNeeded seats
+            const assignedSeats = availableSeats.slice(0, seatsNeeded);
+
+            assignedSeats.forEach(({ row, seat }) => {
+                occupied.add(seatKey(row, seat));
+                newAssignments.push({
+                    row,
+                    seat,
+                    classId: cls.classId,
+                    color: colors[cls.classId]
+                });
+            });
+
+            return true;
+        };
+
+        // Track which side to use next for each group
+        const groupSides: { [groupIndex: number]: "left" | "right" } = {
+            0: "left",
+            1: "left",
+            2: "left"
+        };
+
+        // Assign each class
         sortedClasses.forEach(cls => {
-            if (!tryAssign(cls, "left")) {
-                if (!tryAssign(cls, "right")) {
-                    notAssigned.push(cls.classId);
+            let assigned = false;
+
+            // Try each group in order
+            for (let g = 0; g < ROW_GROUPS.length && !assigned; g++) {
+                const group = ROW_GROUPS[g];
+                const currentSide = groupSides[g];
+
+                // Try current side first
+                if (tryAssignInGroup(cls, group, currentSide)) {
+                    // Alternate side for next class in this group
+                    groupSides[g] = currentSide === "left" ? "right" : "left";
+                    assigned = true;
+                } else {
+                    // Try the other side
+                    const otherSide = currentSide === "left" ? "right" : "left";
+                    if (tryAssignInGroup(cls, group, otherSide)) {
+                        // Keep same preference for next class (since we used the fallback)
+                        assigned = true;
+                    }
                 }
+            }
+
+            if (!assigned) {
+                notAssigned.push(cls.classId);
             }
         });
 
