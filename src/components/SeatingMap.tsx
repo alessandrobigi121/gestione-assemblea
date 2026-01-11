@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { X, RefreshCw, ChevronLeft, ChevronRight } from "lucide-react";
+import { X, RefreshCw, ChevronLeft, ChevronRight, Download } from "lucide-react";
 import { AssemblyEntry } from "@/lib/parsers";
 
 interface SeatingMapProps {
@@ -40,12 +40,13 @@ const SEATS_CONFIG: { [row: string]: { left: number[]; right: number[] } } = {
     "S": { left: [2, 3, 4, 5, 6, 7, 8, 9, 10, 13, 14, 15], right: [16, 17, 18, 21, 22, 23, 24, 25, 26, 27, 28, 29] },
 };
 
+// More distinct, high-contrast colors
 const COLORS = [
-    "#ef4444", "#f97316", "#f59e0b", "#eab308", "#84cc16",
-    "#22c55e", "#14b8a6", "#06b6d4", "#0ea5e9", "#3b82f6",
-    "#6366f1", "#8b5cf6", "#a855f7", "#d946ef", "#ec4899",
-    "#f43f5e", "#78716c", "#71717a", "#64748b", "#0d9488",
-    "#059669", "#16a34a", "#65a30d", "#ca8a04", "#d97706"
+    "#e6194b", "#3cb44b", "#ffe119", "#4363d8", "#f58231",
+    "#911eb4", "#46f0f0", "#f032e6", "#bcf60c", "#fabebe",
+    "#008080", "#e6beff", "#9a6324", "#fffac8", "#800000",
+    "#aaffc3", "#808000", "#ffd8b1", "#000075", "#808080",
+    "#000000", "#ff0000", "#00ff00", "#0000ff", "#ffff00"
 ];
 
 interface SeatAssignment {
@@ -303,6 +304,58 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
         setSelectedShift(shiftNames[newIndex]);
     };
 
+    const exportPDF = () => {
+        // Create a new window with just the SVG and legend
+        const printWindow = window.open('', '_blank');
+        if (!printWindow) return;
+
+        // Build legend HTML
+        const legendItems = Object.entries(classColors).map(([classId, color]) =>
+            `<div style="display:flex;align-items:center;gap:8px;margin:4px 0;">
+                <div style="width:16px;height:16px;background:${color};border-radius:2px;"></div>
+                <span style="font-size:12px;">${classId}</span>
+            </div>`
+        ).join('');
+
+        printWindow.document.write(`
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Mappa Posti - ${selectedShift}</title>
+                <style>
+                    @page { size: A4 landscape; margin: 10mm; }
+                    body { font-family: Arial, sans-serif; margin: 0; padding: 20px; }
+                    .header { text-align: center; margin-bottom: 20px; }
+                    .header h1 { margin: 0; font-size: 24px; }
+                    .header p { margin: 5px 0; color: #666; }
+                    .content { display: flex; gap: 20px; }
+                    .map { flex: 1; }
+                    .map svg { width: 100%; height: auto; }
+                    .legend { width: 200px; padding: 10px; background: #f5f5f5; border-radius: 8px; }
+                    .legend h3 { margin: 0 0 10px 0; font-size: 14px; }
+                </style>
+            </head>
+            <body>
+                <div class="header">
+                    <h1>🗺️ Mappa Posti Auditorium</h1>
+                    <p>${selectedShift} - ${shifts[selectedShift]?.length || 0} classi - ${assignments.length} posti</p>
+                </div>
+                <div class="content">
+                    <div class="map">${modifiedSvg}</div>
+                    <div class="legend">
+                        <h3>Legenda Classi</h3>
+                        ${legendItems}
+                    </div>
+                </div>
+                <script>
+                    window.onload = () => { window.print(); window.close(); };
+                </script>
+            </body>
+            </html>
+        `);
+        printWindow.document.close();
+    };
+
     return (
         <div style={{
             position: 'fixed',
@@ -380,6 +433,22 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
                             }}
                         >
                             <RefreshCw size={16} /> Riassegna
+                        </button>
+                        <button
+                            onClick={exportPDF}
+                            style={{
+                                padding: '0.5rem 1rem',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                gap: '0.5rem',
+                                alignItems: 'center',
+                                background: '#4f46e5',
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '6px'
+                            }}
+                        >
+                            <Download size={16} /> PDF
                         </button>
                         <button
                             onClick={onClose}
