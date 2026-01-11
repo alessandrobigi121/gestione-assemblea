@@ -55,6 +55,15 @@ interface SeatAssignment {
     color: string;
 }
 
+// Calculate how many seats available from a starting row using max 2 rows
+const getCapacityFrom2Rows = (group: string[], startIdx: number, side: "left" | "right"): number => {
+    let total = 0;
+    for (let i = startIdx; i < Math.min(startIdx + 2, group.length); i++) {
+        total += SEATS_CONFIG[group[i]][side].length;
+    }
+    return total;
+};
+
 export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMapProps) {
     const [selectedShift, setSelectedShift] = useState(initialShift);
     const [assignments, setAssignments] = useState<SeatAssignment[]>([]);
@@ -91,90 +100,116 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
             return;
         }
 
-        // Sort classes by size descending for better packing
-        const sortedClasses = [...classes].sort((a, b) => (b.students + 1) - (a.students + 1));
-
+        // Assign colors
         const colors: { [classId: string]: string } = {};
         classes.forEach((cls, i) => {
             colors[cls.classId] = COLORS[i % COLORS.length];
         });
         setClassColors(colors);
 
-        const occupied: Set<string> = new Set();
-        const newAssignments: SeatAssignment[] = [];
-        const notAssigned: string[] = [];
+        // Create slots: each slot is a pair of 2 consecutive rows on one side
+        interface Slot {
+            groupIdx: number;
+            rowStart: number;
+            side: "left" | "right";
+            capacity: number;
+            classes: AssemblyEntry[];
+            usedCapacity: number;
+        }
 
-        const seatKey = (row: string, seat: number) => `${row}-${seat}`;
+        const slots: Slot[] = [];
 
-        // Get available seats for a specific row and side
-        const getRowSeats = (row: string, side: "left" | "right"): number[] => {
-            return SEATS_CONFIG[row][side].filter(seat => !occupied.has(seatKey(row, seat)));
-        };
+        ROW_GROUPS.forEach((group, groupIdx) => {
+            // Create slots for each pair of rows (overlapping)
+            for (let i = 0; i < group.length; i += 2) {
+                const leftCap = getCapacityFrom2Rows(group, i, "left");
+                const rightCap = getCapacityFrom2Rows(group, i, "right");
 
-        // Try to assign a class using max 2 rows within a group and side
-        // Returns true if successfully assigned
-        const tryAssignClass = (
-            cls: AssemblyEntry,
-            group: string[],
-            side: "left" | "right",
-            startRowIndex: number
-        ): { success: boolean; nextRowIndex: number } => {
+                if (leftCap > 0) {
+                    slots.push({
+                        groupIdx,
+                        rowStart: i,
+                        side: "left",
+                        capacity: leftCap,
+                        classes: [],
+                        usedCapacity: 0
+                    });
+                }
+                if (rightCap > 0) {
+                    slots.push({
+                        groupIdx,
+                        rowStart: i,
+                        side: "right",
+                        capacity: rightCap,
+                        classes: [],
+                        usedCapacity: 0
+                    });
+                }
+            }
+        });
+
+        // Sort classes by size (smallest first for better packing)
+        const sortedClasses = [...classes].sort((a, b) => (a.students + 1) - (b.students + 1));
+
+        // Use First Fit Decreasing algorithm
+        const largestFirst = [...sortedClasses].reverse();
+        const unassigned: AssemblyEntry[] = [];
+
+        for (const cls of largestFirst) {
             const seatsNeeded = cls.students + 1;
 
-            // Collect seats from up to 2 consecutive rows
-            const availableSeats: { row: string; seat: number }[] = [];
-            let rowsUsed = 0;
+            // Find the best slot (one with least remaining space after adding this class)
+            let bestSlot: Slot | null = null;
+            let bestRemaining = Infinity;
 
-            for (let i = startRowIndex; i < group.length && rowsUsed < 2; i++) {
-                const row = group[i];
-                const rowSeats = getRowSeats(row, side);
-
-                if (rowSeats.length > 0) {
-                    rowsUsed++;
-                    for (const seat of rowSeats) {
-                        availableSeats.push({ row, seat });
-                        if (availableSeats.length >= seatsNeeded) break;
-                    }
+            for (const slot of slots) {
+                const remaining = slot.capacity - slot.usedCapacity - seatsNeeded;
+                if (remaining >= 0 && remaining < bestRemaining) {
+                    bestSlot = slot;
+                    bestRemaining = remaining;
                 }
-
-                if (availableSeats.length >= seatsNeeded) break;
             }
 
-            // Check if we have enough seats in max 2 rows
-            if (availableSeats.length >= seatsNeeded) {
-                const assignedSeats = availableSeats.slice(0, seatsNeeded);
+            if (bestSlot) {
+                bestSlot.classes.push(cls);
+                bestSlot.usedCapacity += seatsNeeded;
+            } else {
+                unassigned.push(cls);
+            }
+        }
 
-                // Count how many rows we're actually using
-                const rowsInAssignment = new Set(assignedSeats.map(s => s.row)).size;
+        // Now assign actual seats based on slot assignments
+        const occupied: Set<string> = new Set();
+        const newAssignments: SeatAssignment[] = [];
+        const seatKey = (row: string, seat: number) => `${row}-${seat}`;
 
-                // If we're using 2 rows but not filling the first one completely,
-                // check if the second row has very few seats (isolated students)
-                if (rowsInAssignment === 2) {
-                    const firstRow = assignedSeats[0].row;
-                    const seatsInFirstRow = assignedSeats.filter(s => s.row === firstRow).length;
-                    const seatsInSecondRow = assignedSeats.filter(s => s.row !== firstRow).length;
+        // Sort slots by group and row for proper assignment order
+        slots.sort((a, b) => {
+            if (a.groupIdx !== b.groupIdx) return a.groupIdx - b.groupIdx;
+            if (a.rowStart !== b.rowStart) return a.rowStart - b.rowStart;
+            return a.side === "left" ? -1 : 1;
+        });
 
-                    // If second row has less than 5 seats, skip this position
-                    // (to avoid isolated students)
-                    if (seatsInSecondRow > 0 && seatsInSecondRow < 5) {
-                        // Check if we can fit the whole class starting from next row
-                        const nextRowIndex = group.indexOf(firstRow) + 1;
-                        if (nextRowIndex < group.length) {
-                            // Try to fit starting from next row
-                            let seatsFromNextRow = 0;
-                            for (let i = nextRowIndex; i < Math.min(nextRowIndex + 2, group.length); i++) {
-                                seatsFromNextRow += getRowSeats(group[i], side).length;
-                            }
-                            if (seatsFromNextRow >= seatsNeeded) {
-                                // Skip current position, class will fit better in next rows
-                                return { success: false, nextRowIndex: nextRowIndex };
-                            }
-                        }
+        for (const slot of slots) {
+            const group = ROW_GROUPS[slot.groupIdx];
+
+            // Get all seats for this slot (2 consecutive rows on one side)
+            const slotSeats: { row: string; seat: number }[] = [];
+            for (let i = slot.rowStart; i < Math.min(slot.rowStart + 2, group.length); i++) {
+                const row = group[i];
+                for (const seat of SEATS_CONFIG[row][slot.side]) {
+                    if (!occupied.has(seatKey(row, seat))) {
+                        slotSeats.push({ row, seat });
                     }
                 }
+            }
 
-                // Assign the seats
-                assignedSeats.forEach(({ row, seat }) => {
+            // Assign seats to each class in this slot
+            let seatIndex = 0;
+            for (const cls of slot.classes) {
+                const seatsNeeded = cls.students + 1;
+                for (let i = 0; i < seatsNeeded && seatIndex < slotSeats.length; i++) {
+                    const { row, seat } = slotSeats[seatIndex++];
                     occupied.add(seatKey(row, seat));
                     newAssignments.push({
                         row,
@@ -182,82 +217,12 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
                         classId: cls.classId,
                         color: colors[cls.classId]
                     });
-                });
-
-                // Calculate next available row index
-                const lastRowUsed = assignedSeats[assignedSeats.length - 1].row;
-                const lastRowIndex = group.indexOf(lastRowUsed);
-                const lastRowSeatsRemaining = getRowSeats(lastRowUsed, side).length;
-
-                // If the last row is fully used, move to next row
-                const nextRowIndex = lastRowSeatsRemaining === 0 ? lastRowIndex + 1 : lastRowIndex;
-
-                return { success: true, nextRowIndex };
-            }
-
-            return { success: false, nextRowIndex: startRowIndex };
-        };
-
-        // Process each group
-        let classQueue = [...sortedClasses];
-
-        for (const group of ROW_GROUPS) {
-            let leftRowIndex = 0;
-            let rightRowIndex = 0;
-            let side: "left" | "right" = "left";
-
-            while (classQueue.length > 0) {
-                const cls = classQueue[0];
-                const currentRowIndex = side === "left" ? leftRowIndex : rightRowIndex;
-
-                if (currentRowIndex >= group.length) {
-                    // No more rows in this side of this group, try other side
-                    if (side === "left") {
-                        side = "right";
-                        continue;
-                    } else {
-                        // Both sides exhausted for this group
-                        break;
-                    }
-                }
-
-                const result = tryAssignClass(cls, group, side, currentRowIndex);
-
-                if (result.success) {
-                    classQueue.shift(); // Remove assigned class
-
-                    // Update row index for this side
-                    if (side === "left") {
-                        leftRowIndex = result.nextRowIndex;
-                    } else {
-                        rightRowIndex = result.nextRowIndex;
-                    }
-
-                    // Alternate sides
-                    side = side === "left" ? "right" : "left";
-                } else {
-                    // Could not fit, try next row or other side
-                    if (side === "left") {
-                        leftRowIndex = result.nextRowIndex + 1;
-                        side = "right";
-                    } else {
-                        rightRowIndex = result.nextRowIndex + 1;
-                        side = "left";
-                    }
-
-                    // If both sides are exhausted, move to next group
-                    if (leftRowIndex >= group.length && rightRowIndex >= group.length) {
-                        break;
-                    }
                 }
             }
         }
 
-        // Any remaining classes couldn't be assigned
-        notAssigned.push(...classQueue.map(c => c.classId));
-
         setAssignments(newAssignments);
-        setUnassignedClasses(notAssigned);
+        setUnassignedClasses(unassigned.map(c => c.classId));
     };
 
     const updateSvgColors = () => {
