@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { X, Download, RefreshCw, ChevronLeft, ChevronRight } from "lucide-react";
+import { useState, useEffect } from "react";
+import { X, RefreshCw, ChevronLeft, ChevronRight } from "lucide-react";
 import { AssemblyEntry } from "@/lib/parsers";
 
 interface SeatingMapProps {
@@ -12,6 +12,7 @@ interface SeatingMapProps {
 
 const ROWS = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "L", "M", "N", "O", "P", "Q", "R", "S"];
 
+// Seats per side for each row (left = 1-15, right = 16-30)
 const SEATS_CONFIG: { [row: string]: { left: number; right: number } } = {
     "A": { left: 15, right: 15 },
     "B": { left: 15, right: 15 },
@@ -45,16 +46,6 @@ interface SeatAssignment {
     seat: number;
     classId: string;
     color: string;
-    side: "left" | "right";
-}
-
-interface SeatPath {
-    element: Element;
-    centerX: number;
-    centerY: number;
-    row: string;
-    seat: number;
-    side: "left" | "right";
 }
 
 export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMapProps) {
@@ -82,7 +73,7 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
 
     // Update SVG when assignments change
     useEffect(() => {
-        if (svgContent && assignments.length >= 0) {
+        if (svgContent) {
             updateSvgColors();
         }
     }, [svgContent, assignments]);
@@ -108,11 +99,12 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
         const newAssignments: SeatAssignment[] = [];
         const notAssigned: string[] = [];
 
-        const seatKey = (row: string, seat: number, side: "left" | "right") => `${row}-${side}-${seat}`;
-        const isFree = (row: string, seat: number, side: "left" | "right") => !occupied.has(seatKey(row, seat, side));
+        const seatKey = (row: string, seat: number) => `${row}-${seat}`;
+        const isFree = (row: string, seat: number) => !occupied.has(seatKey(row, seat));
 
+        // Try to assign a class to seats on one side
         const tryAssign = (cls: AssemblyEntry, side: "left" | "right"): boolean => {
-            const seatsNeeded = cls.students + 1;
+            const seatsNeeded = cls.students + 1; // +1 for professor
             let seatsAssigned = 0;
             const tempAssignments: SeatAssignment[] = [];
 
@@ -122,13 +114,12 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
                 const endSeat = side === "left" ? maxSeats : 15 + maxSeats;
 
                 for (let seat = startSeat; seat <= endSeat && seatsAssigned < seatsNeeded; seat++) {
-                    if (isFree(row, seat, side)) {
+                    if (isFree(row, seat)) {
                         tempAssignments.push({
                             row,
                             seat,
                             classId: cls.classId,
-                            color: colors[cls.classId],
-                            side
+                            color: colors[cls.classId]
                         });
                         seatsAssigned++;
                     }
@@ -139,7 +130,7 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
 
             if (seatsAssigned >= seatsNeeded) {
                 tempAssignments.forEach(a => {
-                    occupied.add(seatKey(a.row, a.seat, a.side));
+                    occupied.add(seatKey(a.row, a.seat));
                     newAssignments.push(a);
                 });
                 return true;
@@ -147,6 +138,7 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
             return false;
         };
 
+        // Assign each class - try left side first, then right
         sortedClasses.forEach(cls => {
             if (!tryAssign(cls, "left")) {
                 if (!tryAssign(cls, "right")) {
@@ -159,195 +151,48 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
         setUnassignedClasses(notAssigned);
     };
 
-    // Parse path d attribute to get center point
-    const getPathCenter = (d: string): { x: number; y: number } | null => {
-        // Parse the path command to extract points
-        // Format: M x1,y1 L x2,y2 L x3,y3 L x4,y4 Z
-        const coords: { x: number; y: number }[] = [];
-        const parts = d.split(/[MLHVCSQTAZ]/i).filter(p => p.trim());
-
-        for (const part of parts) {
-            const nums = part.split(/[,\s]+/).map(n => parseFloat(n.trim())).filter(n => !isNaN(n));
-            for (let i = 0; i < nums.length - 1; i += 2) {
-                coords.push({ x: nums[i], y: nums[i + 1] });
-            }
-        }
-
-        if (coords.length === 0) return null;
-
-        // Calculate center
-        const sumX = coords.reduce((sum, c) => sum + c.x, 0);
-        const sumY = coords.reduce((sum, c) => sum + c.y, 0);
-        return { x: sumX / coords.length, y: sumY / coords.length };
-    };
-
-    // Determine row and seat from position
-    const determineRowAndSeat = (centerX: number, centerY: number, allPaths: SeatPath[]): { row: string; seat: number; side: "left" | "right" } | null => {
-        // Determine side based on X position (left < 400, right >= 400)
-        const side: "left" | "right" = centerX < 400 ? "left" : "right";
-
-        // Group by approximate Y to find rows
-        // Paths with similar Y are in the same row
-        const yTolerance = 20;
-
-        // Find all paths on this side with similar Y
-        const sameRowPaths = allPaths.filter(p =>
-            p.side === side && Math.abs(p.centerY - centerY) < yTolerance
-        );
-
-        // Sort by X to get seat number
-        sameRowPaths.sort((a, b) => a.centerX - b.centerX);
-
-        const seatIndex = sameRowPaths.findIndex(p =>
-            Math.abs(p.centerX - centerX) < 5 && Math.abs(p.centerY - centerY) < 5
-        );
-
-        if (seatIndex === -1) return null;
-
-        // Determine row based on Y position
-        // Higher Y = closer to palco = row A
-        // We need to map Y ranges to rows
-        const rowYRanges = [
-            { row: "A", minY: 700, maxY: 800 },
-            { row: "B", minY: 650, maxY: 700 },
-            { row: "C", minY: 600, maxY: 650 },
-            { row: "D", minY: 560, maxY: 600 },
-            { row: "E", minY: 520, maxY: 560 },
-            { row: "F", minY: 480, maxY: 520 },
-            { row: "G", minY: 440, maxY: 480 },
-            { row: "H", minY: 400, maxY: 440 },
-            { row: "I", minY: 360, maxY: 400 },
-            { row: "L", minY: 320, maxY: 360 },
-            { row: "M", minY: 290, maxY: 320 },
-            { row: "N", minY: 260, maxY: 290 },
-            { row: "O", minY: 230, maxY: 260 },
-            { row: "P", minY: 200, maxY: 230 },
-            { row: "Q", minY: 170, maxY: 200 },
-            { row: "R", minY: 140, maxY: 170 },
-            { row: "S", minY: 100, maxY: 140 },
-        ];
-
-        const rowMatch = rowYRanges.find(r => centerY >= r.minY && centerY < r.maxY);
-        const row = rowMatch?.row || "A";
-
-        const seat = side === "left" ? seatIndex + 1 : seatIndex + 16;
-
-        return { row, seat, side };
-    };
-
     const updateSvgColors = () => {
         if (!svgContent) return;
 
-        // Create a map of which seats belong to which class
+        // Create a map: row-seat -> color
         const seatColorMap = new Map<string, string>();
         assignments.forEach(a => {
-            seatColorMap.set(`${a.row}-${a.side}-${a.seat}`, a.color);
+            seatColorMap.set(`${a.row}-${a.seat}`, a.color);
         });
 
         // Parse the SVG
         const parser = new DOMParser();
         const doc = parser.parseFromString(svgContent, "image/svg+xml");
 
-        // Find all path elements that represent seats (stroke-width: 0.27px)
-        const allPaths = doc.querySelectorAll("path");
-        const seatPaths: SeatPath[] = [];
+        // For each row, find the group and color the seats
+        ROWS.forEach(row => {
+            const rowGroup = doc.getElementById(row);
+            if (!rowGroup) return;
 
-        allPaths.forEach((path) => {
-            const style = path.getAttribute("style") || "";
-            // Seat paths have stroke-width:0.27px
-            if (style.includes("stroke-width:0.27px") || style.includes("stroke-width: 0.27px")) {
-                const d = path.getAttribute("d") || "";
-                const center = getPathCenter(d);
-                if (center) {
-                    // Apply transform if exists
-                    let transformedX = center.x;
-                    let transformedY = center.y;
+            // Find all seat elements in this row
+            // They have IDs like "_1", "_2", ... "_30"
+            for (let seat = 1; seat <= 30; seat++) {
+                const seatId = `_${seat}`;
+                const color = seatColorMap.get(`${row}-${seat}`);
 
-                    // Check parent for transform
-                    const parent = path.parentElement;
-                    if (parent) {
-                        const transform = parent.getAttribute("transform");
-                        if (transform) {
-                            // Handle matrix(-1,0,0,1,771.305,0) = flip horizontally
-                            const matrixMatch = transform.match(/matrix\(([-\d.]+),([-\d.]+),([-\d.]+),([-\d.]+),([-\d.]+),([-\d.]+)\)/);
-                            if (matrixMatch) {
-                                const [, a, b, c, d, e, f] = matrixMatch.map(Number);
-                                transformedX = a * center.x + c * center.y + e;
-                                transformedY = b * center.x + d * center.y + f;
-                            }
+                if (color) {
+                    // Find element with this ID within the row group
+                    const seatElement = rowGroup.querySelector(`#${CSS.escape(seatId)}`);
+
+                    if (seatElement) {
+                        // It could be a <g> containing a <path> or a <path> directly
+                        const pathElement = seatElement.tagName === 'path'
+                            ? seatElement
+                            : seatElement.querySelector('path');
+
+                        if (pathElement) {
+                            // Change fill color
+                            const currentStyle = pathElement.getAttribute("style") || "";
+                            const newStyle = currentStyle.replace("fill:none", `fill:${color}`);
+                            pathElement.setAttribute("style", newStyle);
                         }
                     }
-
-                    const side: "left" | "right" = transformedX < 400 ? "left" : "right";
-                    seatPaths.push({
-                        element: path,
-                        centerX: transformedX,
-                        centerY: transformedY,
-                        row: "",
-                        seat: 0,
-                        side
-                    });
                 }
-            }
-        });
-
-        // Sort paths by Y (row) then X (seat)
-        seatPaths.sort((a, b) => {
-            // First by Y descending (higher Y = row A)
-            if (Math.abs(a.centerY - b.centerY) > 15) {
-                return b.centerY - a.centerY;
-            }
-            // Then by X
-            return a.centerX - b.centerX;
-        });
-
-        // Group by approximate Y to assign rows
-        let currentRowIndex = 0;
-        let lastY = seatPaths[0]?.centerY || 0;
-
-        seatPaths.forEach((sp, index) => {
-            if (Math.abs(sp.centerY - lastY) > 20) {
-                currentRowIndex++;
-                lastY = sp.centerY;
-            }
-
-            if (currentRowIndex < ROWS.length) {
-                sp.row = ROWS[currentRowIndex];
-            }
-        });
-
-        // Within each row, assign seat numbers
-        const rowGroups = new Map<string, SeatPath[]>();
-        seatPaths.forEach(sp => {
-            if (!rowGroups.has(sp.row)) {
-                rowGroups.set(sp.row, []);
-            }
-            rowGroups.get(sp.row)!.push(sp);
-        });
-
-        rowGroups.forEach((paths, row) => {
-            // Separate left and right
-            const leftPaths = paths.filter(p => p.side === "left").sort((a, b) => a.centerX - b.centerX);
-            const rightPaths = paths.filter(p => p.side === "right").sort((a, b) => a.centerX - b.centerX);
-
-            leftPaths.forEach((p, i) => {
-                p.seat = i + 1;
-            });
-
-            rightPaths.forEach((p, i) => {
-                p.seat = i + 16;
-            });
-        });
-
-        // Apply colors
-        seatPaths.forEach(sp => {
-            const key = `${sp.row}-${sp.side}-${sp.seat}`;
-            const color = seatColorMap.get(key);
-            if (color) {
-                // Change fill color
-                const currentStyle = sp.element.getAttribute("style") || "";
-                const newStyle = currentStyle.replace("fill:none", `fill:${color}`);
-                sp.element.setAttribute("style", newStyle);
             }
         });
 
