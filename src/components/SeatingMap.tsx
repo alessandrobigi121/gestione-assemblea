@@ -12,9 +12,9 @@ interface SeatingMapProps {
 
 // Row groups - classes cannot be split across groups
 const ROW_GROUPS = [
-    ["A", "B", "C"],           // Group 1 (front) - 45 seats per side
-    ["D", "E", "F", "G", "H", "I", "L"],  // Group 2 (middle) - 117 left, 114 right
-    ["M", "N", "O", "P", "Q", "R", "S"]   // Group 3 (back) - 102 left, 99 right
+    ["A", "B", "C"],
+    ["D", "E", "F", "G", "H", "I", "L"],
+    ["M", "N", "O", "P", "Q", "R", "S"]
 ];
 
 const ROWS = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "L", "M", "N", "O", "P", "Q", "R", "S"];
@@ -55,11 +55,6 @@ interface SeatAssignment {
     color: string;
 }
 
-// Calculate total seats in a group for a side
-const getGroupCapacity = (group: string[], side: "left" | "right"): number => {
-    return group.reduce((total, row) => total + SEATS_CONFIG[row][side].length, 0);
-};
-
 export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMapProps) {
     const [selectedShift, setSelectedShift] = useState(initialShift);
     const [assignments, setAssignments] = useState<SeatAssignment[]>([]);
@@ -96,7 +91,7 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
             return;
         }
 
-        // Sort classes by size (students + 1 for professor) descending for better packing
+        // Sort classes by size descending for better packing
         const sortedClasses = [...classes].sort((a, b) => (b.students + 1) - (a.students + 1));
 
         const colors: { [classId: string]: string } = {};
@@ -105,93 +100,80 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
         });
         setClassColors(colors);
 
-        // Calculate block capacities
-        interface Block {
-            group: string[];
-            side: "left" | "right";
-            capacity: number;
-            classes: AssemblyEntry[];
-            usedSeats: number;
-        }
-
-        const blocks: Block[] = [];
-
-        // Create blocks: alternating left/right for each group
-        ROW_GROUPS.forEach(group => {
-            blocks.push({
-                group,
-                side: "left",
-                capacity: getGroupCapacity(group, "left"),
-                classes: [],
-                usedSeats: 0
-            });
-            blocks.push({
-                group,
-                side: "right",
-                capacity: getGroupCapacity(group, "right"),
-                classes: [],
-                usedSeats: 0
-            });
-        });
-
-        // Phase 1: Bin packing - assign classes to blocks
-        const unassigned: AssemblyEntry[] = [];
-        const assignedClassIds = new Set<string>();
-
-        // Try to fit classes into blocks, alternating left/right
-        let blockIndex = 0;
-
-        for (const cls of sortedClasses) {
-            const seatsNeeded = cls.students + 1;
-            let assigned = false;
-
-            // Try all blocks starting from current position
-            for (let i = 0; i < blocks.length && !assigned; i++) {
-                const tryIndex = (blockIndex + i) % blocks.length;
-                const block = blocks[tryIndex];
-
-                if (block.usedSeats + seatsNeeded <= block.capacity) {
-                    block.classes.push(cls);
-                    block.usedSeats += seatsNeeded;
-                    assignedClassIds.add(cls.classId);
-                    assigned = true;
-                    // Move to next block for alternating pattern
-                    blockIndex = (tryIndex + 1) % blocks.length;
-                }
-            }
-
-            if (!assigned) {
-                unassigned.push(cls);
-            }
-        }
-
-        // Phase 2: Assign actual seats based on block assignments
         const occupied: Set<string> = new Set();
         const newAssignments: SeatAssignment[] = [];
+        const notAssigned: string[] = [];
 
         const seatKey = (row: string, seat: number) => `${row}-${seat}`;
 
-        // Get all available seats for a group on one side (in order)
-        const getGroupSeats = (group: string[], side: "left" | "right"): { row: string; seat: number }[] => {
-            const seats: { row: string; seat: number }[] = [];
-            for (const row of group) {
-                const seatNumbers = SEATS_CONFIG[row][side];
-                for (const seat of seatNumbers) {
-                    if (!occupied.has(seatKey(row, seat))) {
-                        seats.push({ row, seat });
-                    }
-                }
-            }
-            return seats;
+        // Get available seats for a specific row and side
+        const getRowSeats = (row: string, side: "left" | "right"): number[] => {
+            return SEATS_CONFIG[row][side].filter(seat => !occupied.has(seatKey(row, seat)));
         };
 
-        // Assign seats for each block's classes
-        for (const block of blocks) {
-            for (const cls of block.classes) {
-                const seatsNeeded = cls.students + 1;
-                const availableSeats = getGroupSeats(block.group, block.side);
+        // Try to assign a class using max 2 rows within a group and side
+        // Returns true if successfully assigned
+        const tryAssignClass = (
+            cls: AssemblyEntry,
+            group: string[],
+            side: "left" | "right",
+            startRowIndex: number
+        ): { success: boolean; nextRowIndex: number } => {
+            const seatsNeeded = cls.students + 1;
+
+            // Collect seats from up to 2 consecutive rows
+            const availableSeats: { row: string; seat: number }[] = [];
+            let rowsUsed = 0;
+
+            for (let i = startRowIndex; i < group.length && rowsUsed < 2; i++) {
+                const row = group[i];
+                const rowSeats = getRowSeats(row, side);
+
+                if (rowSeats.length > 0) {
+                    rowsUsed++;
+                    for (const seat of rowSeats) {
+                        availableSeats.push({ row, seat });
+                        if (availableSeats.length >= seatsNeeded) break;
+                    }
+                }
+
+                if (availableSeats.length >= seatsNeeded) break;
+            }
+
+            // Check if we have enough seats in max 2 rows
+            if (availableSeats.length >= seatsNeeded) {
                 const assignedSeats = availableSeats.slice(0, seatsNeeded);
 
+                // Count how many rows we're actually using
+                const rowsInAssignment = new Set(assignedSeats.map(s => s.row)).size;
+
+                // If we're using 2 rows but not filling the first one completely,
+                // check if the second row has very few seats (isolated students)
+                if (rowsInAssignment === 2) {
+                    const firstRow = assignedSeats[0].row;
+                    const seatsInFirstRow = assignedSeats.filter(s => s.row === firstRow).length;
+                    const seatsInSecondRow = assignedSeats.filter(s => s.row !== firstRow).length;
+
+                    // If second row has less than 5 seats, skip this position
+                    // (to avoid isolated students)
+                    if (seatsInSecondRow > 0 && seatsInSecondRow < 5) {
+                        // Check if we can fit the whole class starting from next row
+                        const nextRowIndex = group.indexOf(firstRow) + 1;
+                        if (nextRowIndex < group.length) {
+                            // Try to fit starting from next row
+                            let seatsFromNextRow = 0;
+                            for (let i = nextRowIndex; i < Math.min(nextRowIndex + 2, group.length); i++) {
+                                seatsFromNextRow += getRowSeats(group[i], side).length;
+                            }
+                            if (seatsFromNextRow >= seatsNeeded) {
+                                // Skip current position, class will fit better in next rows
+                                return { success: false, nextRowIndex: nextRowIndex };
+                            }
+                        }
+                    }
+                }
+
+                // Assign the seats
                 assignedSeats.forEach(({ row, seat }) => {
                     occupied.add(seatKey(row, seat));
                     newAssignments.push({
@@ -201,11 +183,81 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
                         color: colors[cls.classId]
                     });
                 });
+
+                // Calculate next available row index
+                const lastRowUsed = assignedSeats[assignedSeats.length - 1].row;
+                const lastRowIndex = group.indexOf(lastRowUsed);
+                const lastRowSeatsRemaining = getRowSeats(lastRowUsed, side).length;
+
+                // If the last row is fully used, move to next row
+                const nextRowIndex = lastRowSeatsRemaining === 0 ? lastRowIndex + 1 : lastRowIndex;
+
+                return { success: true, nextRowIndex };
+            }
+
+            return { success: false, nextRowIndex: startRowIndex };
+        };
+
+        // Process each group
+        let classQueue = [...sortedClasses];
+
+        for (const group of ROW_GROUPS) {
+            let leftRowIndex = 0;
+            let rightRowIndex = 0;
+            let side: "left" | "right" = "left";
+
+            while (classQueue.length > 0) {
+                const cls = classQueue[0];
+                const currentRowIndex = side === "left" ? leftRowIndex : rightRowIndex;
+
+                if (currentRowIndex >= group.length) {
+                    // No more rows in this side of this group, try other side
+                    if (side === "left") {
+                        side = "right";
+                        continue;
+                    } else {
+                        // Both sides exhausted for this group
+                        break;
+                    }
+                }
+
+                const result = tryAssignClass(cls, group, side, currentRowIndex);
+
+                if (result.success) {
+                    classQueue.shift(); // Remove assigned class
+
+                    // Update row index for this side
+                    if (side === "left") {
+                        leftRowIndex = result.nextRowIndex;
+                    } else {
+                        rightRowIndex = result.nextRowIndex;
+                    }
+
+                    // Alternate sides
+                    side = side === "left" ? "right" : "left";
+                } else {
+                    // Could not fit, try next row or other side
+                    if (side === "left") {
+                        leftRowIndex = result.nextRowIndex + 1;
+                        side = "right";
+                    } else {
+                        rightRowIndex = result.nextRowIndex + 1;
+                        side = "left";
+                    }
+
+                    // If both sides are exhausted, move to next group
+                    if (leftRowIndex >= group.length && rightRowIndex >= group.length) {
+                        break;
+                    }
+                }
             }
         }
 
+        // Any remaining classes couldn't be assigned
+        notAssigned.push(...classQueue.map(c => c.classId));
+
         setAssignments(newAssignments);
-        setUnassignedClasses(unassigned.map(c => c.classId));
+        setUnassignedClasses(notAssigned);
     };
 
     const updateSvgColors = () => {
