@@ -477,17 +477,25 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
 
             // 1. Text Element: legend_text_N
             const textId = `legend_text_${idx}`;
-            const textEl = doc.getElementById(textId);
-            if (textEl) {
-                textEl.textContent = classId;
-                textEl.setAttribute("style", "fill:black; font-weight:bold; display:block;");
+            const textGroup = doc.getElementById(textId);
+            if (textGroup) {
+                const textNode = textGroup.tagName === 'g' ? textGroup.querySelector('text, tspan') : textGroup;
+                if (textNode) {
+                    textNode.textContent = classId;
+                    textNode.setAttribute("style", "fill:black; font-weight:bold; display:block;");
+                    if (textGroup !== textNode) textGroup.setAttribute("style", "display:block");
+                }
             }
 
             // 2. Rect Element: legend_rect_N
             const rectId = `legend_rect_${idx}`;
-            const rectEl = doc.getElementById(rectId);
-            if (rectEl) {
-                rectEl.setAttribute("style", `fill:${color}; stroke:black; stroke-width:1px; display:block;`);
+            const rectGroup = doc.getElementById(rectId);
+            if (rectGroup) {
+                const rectNode = rectGroup.tagName === 'g' ? rectGroup.querySelector('rect, path') : rectGroup;
+                if (rectNode) {
+                    rectNode.setAttribute("style", `fill:${color}; stroke:black; stroke-width:1px; display:block;`);
+                    if (rectGroup !== rectNode) rectGroup.setAttribute("style", "display:block");
+                }
             }
         });
 
