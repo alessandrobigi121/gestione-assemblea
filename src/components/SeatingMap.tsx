@@ -507,6 +507,14 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
         URL.revokeObjectURL(url);
     };
 
+    const cycleShift = (direction: number) => {
+        const currentIndex = shiftNames.indexOf(selectedShift);
+        const newIndex = (currentIndex + direction + shiftNames.length) % shiftNames.length;
+        setSelectedShift(shiftNames[newIndex]);
+        // Reset selections when changing shift
+        setSelectedSeat(null);
+    };
+
     return (
         <div style={{
             position: 'fixed',
@@ -653,7 +661,6 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
                         padding: '1rem'
                     }}>
                         {modifiedSvg ? (
-
                             <div
                                 dangerouslySetInnerHTML={{ __html: modifiedSvg }}
                                 style={{ width: '100%', minWidth: '900px', height: 'auto' }}
