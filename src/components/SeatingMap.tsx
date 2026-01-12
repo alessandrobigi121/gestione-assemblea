@@ -469,44 +469,109 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
 
 
 
-        // 2. Update Legend (Strict ID Match)
-        const sortedClasses = Object.entries(classColors).sort((a, b) => a[0].localeCompare(b[0]));
+        // 2. Update Legend (Custom Sector Sorting & High Contrast)
 
-        sortedClasses.forEach(([classId, color], i) => {
-            const idx = i + 1; // 1-based index
+        // Helper: Get contrast color (white/black) based on background hex
+        const getContrastColor = (hex: string) => {
+            if (!hex) return 'black';
+            const r = parseInt(hex.substr(1, 2), 16);
+            const g = parseInt(hex.substr(3, 2), 16);
+            const b = parseInt(hex.substr(5, 2), 16);
+            const yiq = ((r * 299) + (g * 587) + (b * 114)) / 1000;
+            return (yiq >= 128) ? 'black' : 'white';
+        };
 
-            // 1. Text Element: legend_text_N
+        // Helper: Determine sector index (0-7) for a class
+        const getClassSectorIndex = (className: string) => {
+            const classSeats = assignments.filter(a => a.classId === className);
+            if (classSeats.length === 0) return 8;
+
+            const representative = classSeats[0];
+            const r = representative.row;
+            const s = representative.seat;
+            const isRight = s > 15;
+
+            if (['A', 'B', 'C'].includes(r)) return isRight ? 1 : 0;
+            if (['D', 'E', 'F', 'G'].includes(r)) return isRight ? 3 : 2;
+            if (['H', 'I', 'L'].includes(r)) return isRight ? 5 : 4;
+            if (['M', 'N', 'O', 'P', 'Q', 'R', 'S'].includes(r)) return isRight ? 7 : 6;
+
+            return 8;
+        };
+
+        // Group classes by sector
+        const sectors: string[][] = Array(9).fill(null).map(() => []);
+        Object.keys(classColors).forEach(className => {
+            const idx = getClassSectorIndex(className);
+            sectors[idx].push(className);
+        });
+
+        const legendMap = new Map<number, { className: string, color: string }>();
+
+        sectors.forEach((sectorClasses, sectorIdx) => {
+            sectorClasses.sort(); // Sort inside the sector
+            const startSlot = (sectorIdx * 4) + 1;
+            sectorClasses.forEach((className, i) => {
+                if (i < 4) {
+                    legendMap.set(startSlot + i, {
+                        className,
+                        color: classColors[className]
+                    });
+                }
+            });
+        });
+
+        // Use a loop from 1 to 32 instead of forEach on sortedClasses
+        const slotIndices = Array.from({ length: 32 }, (_, i) => i + 1);
+        slotIndices.forEach((idx) => {
+            const data = legendMap.get(idx);
+            const classId = data ? data.className : "";
+            const color = data ? data.color : "";
+
+            // 1. Text Element
             const textId = `legend_text_${idx}`;
             const textGroup = doc.getElementById(textId);
             if (textGroup) {
                 const textNode = textGroup.tagName === 'g' ? textGroup.querySelector('text, tspan') : textGroup;
                 if (textNode) {
-                    textNode.textContent = classId;
-                    textNode.setAttribute("style", "fill:black; font-weight:bold; display:block;");
-                    if (textGroup !== textNode) textGroup.setAttribute("style", "display:block");
+                    if (data) {
+                        const contrast = getContrastColor(data.color);
+                        textNode.textContent = classId;
+                        textNode.setAttribute("style", `fill:${contrast}; font-weight:bold; font-size:10px; display:block;`);
+                        if (textGroup !== textNode) textGroup.setAttribute("style", "display:block");
+                    } else {
+                        textNode.textContent = "";
+                        if (textGroup !== textNode) textGroup.setAttribute("style", "display:none");
+                    }
                 }
             }
 
-            // 2. Rect Element: legend_rect_N
+            // 2. Rect Element
             const rectId = `legend_rect_${idx}`;
             const rectGroup = doc.getElementById(rectId);
             if (rectGroup) {
                 const rectNode = rectGroup.tagName === 'g' ? rectGroup.querySelector('rect, path') : rectGroup;
                 if (rectNode) {
-                    rectNode.setAttribute("style", `fill:${color}; stroke:black; stroke-width:1px; display:block;`);
-                    if (rectGroup !== rectNode) rectGroup.setAttribute("style", "display:block");
+                    if (data) {
+                        rectNode.setAttribute("style", `fill:${color}; stroke:black; stroke-width:1px; display:block;`);
+                        if (rectGroup !== rectNode) rectGroup.setAttribute("style", "display:block");
+                    } else {
+                        if (rectGroup !== rectNode) rectGroup.setAttribute("style", "display:none");
+                    }
                 }
             }
         });
 
-        // Hide unused slots if they exist
-        for (let i = sortedClasses.length + 1; i <= 50; i++) {
+        // Hide only remaining slots if any (33-50)
+        for (let i = 33; i <= 50; i++) {
             const textId = `legend_text_${i}`;
             const rectId = `legend_rect_${i}`;
-            const textEl = doc.getElementById(textId);
-            const rectEl = doc.getElementById(rectId);
-            if (textEl) textEl.textContent = "";
-            if (rectEl) rectEl.setAttribute("style", "display:none");
+            // Use same generic check (group or element)
+            const textGroup = doc.getElementById(textId);
+            const rectGroup = doc.getElementById(rectId);
+
+            if (textGroup) textGroup.setAttribute("style", "display:none");
+            if (rectGroup) rectGroup.setAttribute("style", "display:none");
         }
 
         const serializer = new XMLSerializer();
