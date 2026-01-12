@@ -374,7 +374,7 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
                 const seatNum = parseInt(serifId);
                 if (isNaN(seatNum) || seatNum < 1 || seatNum > 30) return;
 
-                const color = seatColorMap.get(`${row}-${seatNum}`) || 'none'; // Default to none/white if empty
+                const color = seatColorMap.get(`${row}-${seatNum}`) || 'transparent'; // Use transparent to catch clicks inside
 
                 const pathElement = el.tagName === 'path'
                     ? el
@@ -391,7 +391,7 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
                     if (isEditMode && selectedSeat && selectedSeat.row === row && selectedSeat.seat === seatNum) {
                         newStyle += "stroke:black;stroke-width:2px;";
                     } else if (isEditMode) {
-                        newStyle += "cursor:pointer;";
+                        newStyle += "cursor:pointer;pointer-events:all;";
                     }
 
                     // Apply the complete style to the path
