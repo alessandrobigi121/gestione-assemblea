@@ -394,27 +394,27 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
                         newStyle += "cursor:pointer;";
                     }
 
+                    // Apply the complete style to the path
                     pathElement.setAttribute("style", newStyle);
 
-                    // Add Click Handler Logic (Virtual, via data attr for React to pick up if we did pure SVG, 
-                    // but here we are rendering HTML string. We need a way to click.)
-                    // WE CANNOT ADD JS HANDLERS TO STRING.
-                    // Instead, we rely on the container's onClick and mapping coordinate/target back to seat?
-                    // OR we add an invisible overlay.
-                    // Actually, simpler: We make the whole SVG interactable? No.
-                    // We will trust the user to click the graphics.
-                    // We add an id to the path to identify it easily if using event delegation, 
-                    // BUT dangerouslySetInnerHTML doesn't wire up React events easily.
-                    // OPTION: We add an onclick attribute that calls a global function? No, unsafe.
-                    // SOLUTION: The standard way is parsing click target in the container.
+                    // Add Click Handler Logic via data attrs
+                    // Add attributes to the container logic
+                    if (el !== pathElement) {
+                        // If it's a group, we can add cursor pointer here too for better UX
+                        el.setAttribute("style", "cursor: pointer;");
+                        el.setAttribute("data-row", row);
+                        el.setAttribute("data-seat", seatNum.toString());
+                        el.setAttribute("class", "seat-element");
+                    } else {
+                        // If el IS the path, we already set the style above.
+                        // Just ensure data attributes are set.
+                        // The class is redundant if we rely on data attrs, but good for consistency.
+                        pathElement.setAttribute("class", "seat-element");
+                    }
 
-
-                    // Let's add data-seat-info for the container click handler
-                    // FIX: Add data attrs to the Group (el) if possible, to catch clicks on children (text)
-                    el.setAttribute("data-row", row);
-                    el.setAttribute("data-seat", seatNum.toString());
-                    el.setAttribute("class", "seat-element");
-                    el.setAttribute("style", "cursor: pointer;");
+                    // Always ensure path has data attributes as fallback
+                    pathElement.setAttribute("data-row", row);
+                    pathElement.setAttribute("data-seat", seatNum.toString());
 
                     // Also keep attributes on path for safety or specific styling
                     pathElement.setAttribute("data-row", row);
