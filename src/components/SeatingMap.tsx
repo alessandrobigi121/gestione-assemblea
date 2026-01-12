@@ -483,61 +483,18 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
         // Map to keep track of which legend indices we've found and used
         const usedLegendIndices = new Set<number>();
 
+        // 2. Update Legend
+        // FIX: The searching for "1", "2" text matched actual seat numbers and broke the map.
+        // We revert to a strict check or disabled state until strict IDs are found.
+        // Users "Class right Row..." IDs were not found in grep yet.
+        // For now, we DO NOT touch text elements based on content to avoid corruption.
+
+        /* 
+        // DISABLED LOGIC
         textElements.forEach(textEl => {
-            const content = textEl.textContent?.trim();
-            if (!content) return;
-
-            const idx = parseInt(content);
-            if (isNaN(idx) || idx < 1 || idx > 50) return;
-
-            // CHECK: Is this text inside a Row group (A-S)?
-            let parent = textEl.parentElement;
-            let isSeat = false;
-            while (parent) {
-                if (parent.id && rowIds.has(parent.id)) {
-                    isSeat = true;
-                    break;
-                }
-                // Also check if it has serif:id which implies it's a seat group?
-                // Actually seats have `serif:id` on the `g` inside the Row `g`.
-                // If the user put the legend *outside* the row groups (root level or dedicated layer), this check works.
-                parent = parent.parentElement;
-            }
-
-            if (isSeat) {
-                // It's a seat number. Make sure it doesn't block clicks.
-                textEl.setAttribute("style", "pointer-events: none; user-select: none;");
-                return;
-            }
-
-            // If we are here, it's a number, and NOT in a row. Likely the legend.
-            if (idx <= sortedClasses.length) {
-                const [classId, color] = sortedClasses[idx - 1];
-                textEl.textContent = classId;
-                textEl.setAttribute("style", "fill:black; font-weight:bold;");
-
-                // Color the box.
-                // Looking at grep: <g ...><g ...></g><text...>1</text></g>
-                // Sibling approach again.
-                let sibling = textEl.previousElementSibling;
-                if (sibling) {
-                    const path = sibling.querySelector('path, rect');
-                    if (path) {
-                        path.setAttribute("style", `fill:${color};stroke:black;stroke-width:1px;`);
-                    } else {
-                        const subPaths = sibling.querySelectorAll('path, rect');
-                        if (subPaths.length > 0) {
-                            subPaths.forEach(p => p.setAttribute("style", `fill:${color};stroke:black;stroke-width:1px;`));
-                        }
-                    }
-                }
-            } else {
-                // Unused legend slot
-                textEl.textContent = "";
-                const sibling = textEl.previousElementSibling;
-                if (sibling) sibling.setAttribute("style", "display:none");
-            }
-        });
+             // ...
+        }); 
+        */
 
 
         const serializer = new XMLSerializer();
