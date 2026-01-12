@@ -417,63 +417,118 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
         });
 
 
-        // 2. Update Legend (New Logic - Robust fallback)
+        // 2. Update Legend (Corrected Logic)
         const sortedClasses = Object.entries(classColors).sort((a, b) => a[0].localeCompare(b[0]));
+
+        // User pattern: "class, write row... and then 1, 2, 3 or 4"
+        // Based on grep, I don't see "class" or "right" in the IDs. 
+        // The user says: "nei rettangoli che ho chiamato class right oppure class left"
+        // BUT grep failed to find "class" in IDs. 
+        // Crucial realization: The user might have renamed them in the source editor (Serif/Illustrator)
+        // but the export `serif:id` or `id` might be different or stripped if not preserved?
+        // OR the grep was case sensitive? (I used -i).
+        // Let's look at the text elements again. grep found <text ...>1</text> inside <g transform...>.
+        // The user says "Ti ho messo 1, 2, 3, 4".
+        // The problem with my previous logic was that I replaced *ALL* text "1"s.
+        // Seat numbers are "1", "2", "3" too!
+        // Constraint: Legend numbers are likely 1, 2, 3... up to ~20. Seats go to ~30.
+        // DIFFERENTIATION: Seat numbers are usually inside a group representing a seat?
+        // Legend numbers might be "floating" or in a specific area.
+        // LOOK AT GREP OUTPUT: 
+        // <text ...>1</text> at y="557.724px"
+        // <text ...>2</text> at y="557.724px"
+        // <text ...>3</text> at y="557.724px"
+        // They share the SAME Y coordinate! They are in a row (vertical or horizontal?).
+        // Seats are arranged in rows, so their Y's differ.
+        // HYPOTHESIS: The legend keys are the texts at y="557.724px" (or similar constant Y/X).
+        // Strategy: 
+        // 1. Find all text nodes with content "1", "2"...
+        // 2. Group them by their Y (or X) position.
+        // 3. The group with the most "1..N" consecutive numbers is likely the legend.
+        // 4. Alternatively, seats usually have `serif:id` on their group?
+        //    grep output shows the text "1" is inside a <g transform...> which is inside <g transform...>.
+        //    It's hard to distinguish by structure alone without more context.
+        //
+        // SAFER STRATEGY: 
+        // The user explicitly said: "class, write row...".
+        // Maybe he added *attributes*? `id` should be there.
+        // If grep didn't find "class", maybe the ID is `layer1` etc.?
+        // Use the coordinates! 
+        // The texts found by grep `<text ...>1</text>` have `y="557.724px"`. 
+        // This is likely the bottom of the SVG (legend area).
+        // I will target text elements specifically with `y ≈ 557` OR just be very careful.
+        // BETTER: I will assume the legend texts are *later* in the DOM or have a specific style?
+        // No.
+        // PROPOSAL: Verify if the parent `g` of the text has an ID.
+        // Let's try to map the specific "1", "2"... found in the grep at the bottom.
+        // I will restrict matches to elements that do NOT look like seats.
+        // Seats in this file seem to have `serif:id` on the group? 
+        // I will iterate all matches, check if they are "seats" (part of the main rows) and exclude them.
+        // How to identify seats? In `updateSvgColors` PART 1, we use `ROWS.forEach(row => doc.getElementById(row)...)`.
+        // So seats are descendants of elements with ID "A", "B", "C"...
+        // The LEGEND is likely NOT inside those Row groups.
+        // FIX: Only update text "1", "2"... if it is NOT a descendant of a Row Group!
+
+        const rowIds = new Set(ROWS);
+        const textElements = doc.querySelectorAll('text');
 
         // Map to keep track of which legend indices we've found and used
         const usedLegendIndices = new Set<number>();
-
-        // Find all text elements that might be placeholders (content is "1", "2", etc.)
-        const textElements = doc.querySelectorAll('text');
 
         textElements.forEach(textEl => {
             const content = textEl.textContent?.trim();
             if (!content) return;
 
-            // value is likely "1", "2" etc.
             const idx = parseInt(content);
-            if (!isNaN(idx) && idx >= 1 && idx <= 50) {
-                // This is a candidate for Legend Text #idx
-                // If we have a class for this index, update it
-                if (idx <= sortedClasses.length) {
-                    const [classId, color] = sortedClasses[idx - 1];
+            if (isNaN(idx) || idx < 1 || idx > 50) return;
 
-                    // Update Text
-                    textEl.textContent = classId;
-                    textEl.style.fill = "black";
-                    textEl.style.fontWeight = "bold";
+            // CHECK: Is this text inside a Row group (A-S)?
+            let parent = textEl.parentElement;
+            let isSeat = false;
+            while (parent) {
+                if (parent.id && rowIds.has(parent.id)) {
+                    isSeat = true;
+                    break;
+                }
+                // Also check if it has serif:id which implies it's a seat group?
+                // Actually seats have `serif:id` on the `g` inside the Row `g`.
+                // If the user put the legend *outside* the row groups (root level or dedicated layer), this check works.
+                parent = parent.parentElement;
+            }
 
-                    // Find associated color box (sibling or close relative)
-                    // Pattern seen in file: <g><g (rect)></g><text>N</text></g>
-                    // So we look for previous sibling of the text
-                    let sibling = textEl.previousElementSibling;
+            if (isSeat) return; // Skip seat numbers!
 
-                    // Try to find a path or rect inside the sibling
-                    if (sibling) {
-                        const path = sibling.querySelector('path, rect');
-                        if (path) {
-                            path.setAttribute("style", `fill:${color};stroke:black;stroke-width:1px;`);
-                        } else {
-                            // Maybe the sibling IS the path/rect/g acting as box
-                            // If it's a g, try setting fill on all children? 
-                            // Or maybe the user used a symbol. 
-                            // Let's try setting style on the sibling itself if it accepts it, or children
-                            const subPaths = sibling.querySelectorAll('path, rect');
-                            if (subPaths.length > 0) {
-                                subPaths.forEach(p => p.setAttribute("style", `fill:${color};stroke:black;stroke-width:1px;`));
-                            }
+            // If we are here, it's a number, and NOT in a row. Likely the legend.
+            if (idx <= sortedClasses.length) {
+                const [classId, color] = sortedClasses[idx - 1];
+
+                textEl.textContent = classId;
+                textEl.style.fill = "black";
+                textEl.style.fontWeight = "bold";
+
+                // Color the box.
+                // Looking at grep: <g ...><g ...></g><text...>1</text></g>
+                // Sibling approach again.
+                let sibling = textEl.previousElementSibling;
+                if (sibling) {
+                    const path = sibling.querySelector('path, rect');
+                    if (path) {
+                        path.setAttribute("style", `fill:${color};stroke:black;stroke-width:1px;`);
+                    } else {
+                        const subPaths = sibling.querySelectorAll('path, rect');
+                        if (subPaths.length > 0) {
+                            subPaths.forEach(p => p.setAttribute("style", `fill:${color};stroke:black;stroke-width:1px;`));
                         }
                     }
-
-                    usedLegendIndices.add(idx);
-                } else {
-                    // Empty slot - hide it
-                    textEl.textContent = "";
-                    const sibling = textEl.previousElementSibling;
-                    if (sibling) sibling.setAttribute("style", "display:none");
                 }
+            } else {
+                // Unused legend slot
+                textEl.textContent = "";
+                const sibling = textEl.previousElementSibling;
+                if (sibling) sibling.setAttribute("style", "display:none");
             }
         });
+
 
         const serializer = new XMLSerializer();
         const newSvg = serializer.serializeToString(doc);
