@@ -408,10 +408,17 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
                     // OPTION: We add an onclick attribute that calls a global function? No, unsafe.
                     // SOLUTION: The standard way is parsing click target in the container.
 
+
                     // Let's add data-seat-info for the container click handler
+                    // FIX: Add data attrs to the Group (el) if possible, to catch clicks on children (text)
+                    el.setAttribute("data-row", row);
+                    el.setAttribute("data-seat", seatNum.toString());
+                    el.setAttribute("class", "seat-element");
+                    el.setAttribute("style", "cursor: pointer;");
+
+                    // Also keep attributes on path for safety or specific styling
                     pathElement.setAttribute("data-row", row);
                     pathElement.setAttribute("data-seat", seatNum.toString());
-                    pathElement.setAttribute("class", "seat-element");
                 }
             });
         });
@@ -470,7 +477,8 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
         // FIX: Only update text "1", "2"... if it is NOT a descendant of a Row Group!
 
         const rowIds = new Set(ROWS);
-        const textElements = doc.querySelectorAll('text');
+        // Search text AND tspan to be safe
+        const textElements = doc.querySelectorAll('text, tspan');
 
         // Map to keep track of which legend indices we've found and used
         const usedLegendIndices = new Set<number>();
@@ -496,15 +504,17 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
                 parent = parent.parentElement;
             }
 
-            if (isSeat) return; // Skip seat numbers!
+            if (isSeat) {
+                // It's a seat number. Make sure it doesn't block clicks.
+                textEl.setAttribute("style", "pointer-events: none; user-select: none;");
+                return;
+            }
 
             // If we are here, it's a number, and NOT in a row. Likely the legend.
             if (idx <= sortedClasses.length) {
                 const [classId, color] = sortedClasses[idx - 1];
-
                 textEl.textContent = classId;
-                textEl.style.fill = "black";
-                textEl.style.fontWeight = "bold";
+                textEl.setAttribute("style", "fill:black; font-weight:bold;");
 
                 // Color the box.
                 // Looking at grep: <g ...><g ...></g><text...>1</text></g>
