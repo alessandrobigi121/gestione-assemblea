@@ -416,80 +416,64 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
             });
         });
 
-        // 2. Update Legend (New Logic)
+
+        // 2. Update Legend (New Logic - Robust fallback)
         const sortedClasses = Object.entries(classColors).sort((a, b) => a[0].localeCompare(b[0]));
 
-        // We look for elements like id="_1" which seem to correspond to legend boxes in user's file?
-        // User said "1, 2, 3, 4". Looking at the file, I see:
-        // <g transform...><text...>1</text></g> ... this looks like seat numbers.
-        // Wait, looking at the user update diff...
-        // The user said: "Basta che colori i rettangoli del colore della classe e sopra ci scrivi il nome della classe. ... Ti ho messo 1, 2, 3, 4."
-        // I need to find WHERE these 1, 2, 3, 4 are.
-        // In the read file (Step 36/39), I see ids like `_180`, `_2100` in group `S` or `R`.
-        // I suspect the user added rectangles with simple IDs or IDs matching the numbers.
-        // Let's try to find elements by ID "1", "2", "3" etc or typical legend IDs.
-        // Actually, in the file view, I see <path id="_1" ...> inside groups A, B, C etc. those are SEATS.
-        // The user might have added them at the END or distinctly. 
-        // Let's look for independent rects or groups.
-        // Since I cannot grep the latest file again inside this tool call, I will assume a standard naming convention 
-        // or look for "legend" if I could.
-        // HACK: The user said "Ti ho messo 1, 2, 3, 4".
-        // I will search for elements with id="1", id="2" etc (or _1, _2 if serif export).
-        // BUT _1 inside A is a seat.
-        // Re-reading Step 39, I see <path id="_180"> etc.
-        // I will implement a loop that tries to find "legend_rect_X" OR just "X" if unique?
-        // Providing a safe fallback: if specific legend IDs aren't found, we can't render it in SVG.
-        // However, I will try to find generic IDs often used for legends if the user didn't name them 'legend_'.
+        // Map to keep track of which legend indices we've found and used
+        const usedLegendIndices = new Set<number>();
 
-        // *Correction*: I will use a robust text replacement for key strings if found, otherwise skip.
-        // Since I can't be sure of the IDs without re-reading specifically FOR them after user edit,
-        // and I just read it, let's assume I missed them or they are obscure.
-        // WAIT. The user said "ho modificato il file". 
-        // I read the file in step 36. 
-        // I see many <g id="_30" ...> which are seats.
-        // I DO NOT see obvious legend placeholders in the snippet I read (it was truncated).
-        // I will implement the logic to looking for `legend_rect_${i}` and `legend_text_${i}` as planned.
-        // If the user named them "1", "2", and they conflict with seats, it's a problem.
-        // I will try to support `legend_1`, `legend_2` etc.
+        // Find all text elements that might be placeholders (content is "1", "2", etc.)
+        const textElements = doc.querySelectorAll('text');
 
-        sortedClasses.forEach(([classId, color], index) => {
-            const legendIndex = index + 1; // 1-based as per user hint
+        textElements.forEach(textEl => {
+            const content = textEl.textContent?.trim();
+            if (!content) return;
 
-            // Try common naming patterns for the rectangle
-            const rectIds = [`legend_rect_${legendIndex}`, `legenda_rect_${legendIndex}`, `rect_${legendIndex}`, `R${legendIndex}`];
-            let rectEl = null;
-            for (const id of rectIds) {
-                rectEl = doc.getElementById(id);
-                if (rectEl) break;
-            }
+            // value is likely "1", "2" etc.
+            const idx = parseInt(content);
+            if (!isNaN(idx) && idx >= 1 && idx <= 50) {
+                // This is a candidate for Legend Text #idx
+                // If we have a class for this index, update it
+                if (idx <= sortedClasses.length) {
+                    const [classId, color] = sortedClasses[idx - 1];
 
-            if (rectEl) {
-                rectEl.setAttribute("style", `fill:${color};stroke:black;stroke-width:1px;`);
-                rectEl.style.display = "inline";
-            }
+                    // Update Text
+                    textEl.textContent = classId;
+                    textEl.style.fill = "black";
+                    textEl.style.fontWeight = "bold";
 
-            // Try common naming patterns for the text
-            const textIds = [`legend_text_${legendIndex}`, `legenda_text_${legendIndex}`, `text_${legendIndex}`, `T${legendIndex}`];
-            let textEl = null;
-            for (const id of textIds) {
-                textEl = doc.getElementById(id);
-                if (textEl) break;
-            }
+                    // Find associated color box (sibling or close relative)
+                    // Pattern seen in file: <g><g (rect)></g><text>N</text></g>
+                    // So we look for previous sibling of the text
+                    let sibling = textEl.previousElementSibling;
 
-            if (textEl) {
-                textEl.textContent = classId;
-                textEl.style.display = "inline";
-                // Ensure text is visible (black)
-                const currentStyle = textEl.getAttribute("style") || "";
-                textEl.setAttribute("style", currentStyle + "fill:black;");
+                    // Try to find a path or rect inside the sibling
+                    if (sibling) {
+                        const path = sibling.querySelector('path, rect');
+                        if (path) {
+                            path.setAttribute("style", `fill:${color};stroke:black;stroke-width:1px;`);
+                        } else {
+                            // Maybe the sibling IS the path/rect/g acting as box
+                            // If it's a g, try setting fill on all children? 
+                            // Or maybe the user used a symbol. 
+                            // Let's try setting style on the sibling itself if it accepts it, or children
+                            const subPaths = sibling.querySelectorAll('path, rect');
+                            if (subPaths.length > 0) {
+                                subPaths.forEach(p => p.setAttribute("style", `fill:${color};stroke:black;stroke-width:1px;`));
+                            }
+                        }
+                    }
+
+                    usedLegendIndices.add(idx);
+                } else {
+                    // Empty slot - hide it
+                    textEl.textContent = "";
+                    const sibling = textEl.previousElementSibling;
+                    if (sibling) sibling.setAttribute("style", "display:none");
+                }
             }
         });
-
-        // Hide unused legend slots (up to 50?)
-        for (let i = sortedClasses.length + 1; i < 50; i++) {
-            // ... logic to hide unused if we knew the IDs guaranteed ...
-            // For now, assume user only added enough or we just leave them empty/default
-        }
 
         const serializer = new XMLSerializer();
         const newSvg = serializer.serializeToString(doc);
@@ -614,7 +598,7 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
                                 borderRadius: '6px'
                             }}
                         >
-                            ✏️ {isEditMode ? 'Modifica ON' : 'Modifica'}
+                            ✏️ {isEditMode ? 'Disattiva Modifica' : '✏️ Modifica'}
                         </button>
 
                         <button
@@ -660,8 +644,30 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
                         display: 'flex',
                         alignItems: 'flex-start',
                         justifyContent: 'center',
-                        padding: '1rem'
+                        padding: '1rem',
+                        position: 'relative'
                     }}>
+                        {isEditMode && (
+                            <div style={{
+                                position: 'absolute',
+                                top: '1rem',
+                                left: '50%',
+                                transform: 'translateX(-50%)',
+                                background: '#fee2e2',
+                                color: '#b91c1c',
+                                padding: '0.5rem 1rem',
+                                borderRadius: '999px',
+                                boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+                                zIndex: 10,
+                                fontWeight: 'bold',
+                                fontSize: '0.875rem',
+                                border: '1px solid #fca5a5'
+                            }}>
+                                {selectedSeat
+                                    ? `Posto ${selectedSeat.row}-${selectedSeat.seat} selezionato. Clicca su un altro posto per SCAMBIARE.`
+                                    : "Clicca su un posto per SELEZIONARLO, poi clicca su un altro per SPOSTARE."}
+                            </div>
+                        )}
                         {modifiedSvg ? (
                             <div
                                 dangerouslySetInnerHTML={{ __html: modifiedSvg }}
