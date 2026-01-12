@@ -1,4 +1,6 @@
 "use client";
+// Force new build - fix cycleShift
+
 
 import { useState, useEffect } from "react";
 import { X, RefreshCw, ChevronLeft, ChevronRight, Download } from "lucide-react";
