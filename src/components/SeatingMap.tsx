@@ -208,7 +208,7 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
     const shiftNames = ["Primo turno", "Secondo turno", "Terzo turno", "Quarto turno"];
 
     useEffect(() => {
-        fetch("/planimetria.svg")
+        fetch("/planimetria_def.svg")
             .then(res => res.text())
             .then(text => setSvgContent(text))
             .catch(err => console.error("Error loading SVG:", err));
