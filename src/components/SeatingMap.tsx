@@ -1,9 +1,7 @@
 "use client";
-// Force new build - fix cycleShift
 
-
-import { useState, useEffect } from "react";
-import { X, RefreshCw, ChevronLeft, ChevronRight, Download } from "lucide-react";
+import { useState, useEffect, DragEvent } from "react";
+import { X, RefreshCw, ChevronLeft, ChevronRight, Download, Wand2, Hand, Save } from "lucide-react";
 import { AssemblyEntry } from "@/lib/parsers";
 
 interface SeatingMapProps {
@@ -11,8 +9,6 @@ interface SeatingMapProps {
     initialShift: string;
     onClose: () => void;
 }
-
-
 
 const STORAGE_KEY_PREFIX = "assembly_map_";
 
@@ -75,30 +71,24 @@ function findBestAssignment(classes: AssemblyEntry[], bins: Bin[]): { assigned: 
     const assigned = new Map<string, Bin>();
     const unassigned: AssemblyEntry[] = [];
 
-    // Sort classes by size descending
     const sortedClasses = [...classes].sort((a, b) => (b.students + 1) - (a.students + 1));
 
-    // Reset bins
     bins.forEach(bin => {
         bin.classes = [];
         bin.usedCapacity = 0;
     });
 
-    // Separate bins by side for alternating assignment
     const leftBins = bins.filter(b => b.side === "left");
     const rightBins = bins.filter(b => b.side === "right");
 
-    // Alternate between left and right when assigning
     let useLeft = true;
 
     for (const cls of sortedClasses) {
         const seatsNeeded = cls.students + 1;
 
-        // Try the current side first, then the other
         const primaryBins = useLeft ? leftBins : rightBins;
         const secondaryBins = useLeft ? rightBins : leftBins;
 
-        // Find best fit in primary bins
         let bestBin: Bin | null = null;
         let bestRemaining = Infinity;
 
@@ -110,7 +100,6 @@ function findBestAssignment(classes: AssemblyEntry[], bins: Bin[]): { assigned: 
             }
         }
 
-        // If not found in primary, try secondary
         if (!bestBin) {
             for (const bin of secondaryBins) {
                 const remaining = bin.capacity - bin.usedCapacity - seatsNeeded;
@@ -125,21 +114,17 @@ function findBestAssignment(classes: AssemblyEntry[], bins: Bin[]): { assigned: 
             bestBin.classes.push(cls);
             bestBin.usedCapacity += seatsNeeded;
             assigned.set(cls.classId, bestBin);
-            // Alternate side for next class
             useLeft = !useLeft;
         } else {
             unassigned.push(cls);
         }
     }
 
-    // If we have unassigned classes, try to swap to make room
     if (unassigned.length > 0) {
-        // Try swapping small classes between bins to make room
         for (let i = unassigned.length - 1; i >= 0; i--) {
             const cls = unassigned[i];
             const seatsNeeded = cls.students + 1;
 
-            // Find any bin with enough space
             for (const bin of bins) {
                 if (bin.capacity - bin.usedCapacity >= seatsNeeded) {
                     bin.classes.push(cls);
@@ -154,6 +139,55 @@ function findBestAssignment(classes: AssemblyEntry[], bins: Bin[]): { assigned: 
     return { assigned, unassigned };
 }
 
+// Helper: Get all seats for a block/side in order
+function getBlockSeats(blockIdx: number, side: "left" | "right", occupied: Set<string>): { row: string; seat: number }[] {
+    const block = BLOCKS[blockIdx];
+    const seats: { row: string; seat: number }[] = [];
+    for (const row of block.rows) {
+        for (const seat of SEATS_CONFIG[row][side]) {
+            if (!occupied.has(`${row}-${seat}`)) {
+                seats.push({ row, seat });
+            }
+        }
+    }
+    return seats;
+}
+
+// Helper: Given a seat, find its block and side
+function findBlockAndSide(row: string, seat: number): { blockIdx: number; side: "left" | "right" } | null {
+    const side: "left" | "right" = seat <= 15 ? "left" : "right";
+    for (let i = 0; i < BLOCKS.length; i++) {
+        if (BLOCKS[i].rows.includes(row)) {
+            return { blockIdx: i, side };
+        }
+    }
+    return null;
+}
+
+// Smart Fill: Starting from a seat, fill N seats within the same block/side
+function smartFill(
+    startRow: string,
+    startSeat: number,
+    seatsNeeded: number,
+    currentAssignments: SeatAssignment[]
+): { row: string; seat: number }[] {
+    const location = findBlockAndSide(startRow, startSeat);
+    if (!location) return [];
+
+    const occupied = new Set(currentAssignments.map(a => `${a.row}-${a.seat}`));
+    const blockSeats = getBlockSeats(location.blockIdx, location.side, occupied);
+
+    // Find where our start seat is in the sequence
+    const startIdx = blockSeats.findIndex(s => s.row === startRow && s.seat === startSeat);
+    if (startIdx === -1) {
+        // Start seat is already occupied, just take first available
+        return blockSeats.slice(0, seatsNeeded);
+    }
+
+    // Take seats starting from startIdx
+    return blockSeats.slice(startIdx, startIdx + seatsNeeded);
+}
+
 export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMapProps) {
     const [selectedShift, setSelectedShift] = useState(initialShift);
     const [assignments, setAssignments] = useState<SeatAssignment[]>([]);
@@ -162,9 +196,14 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
     const [svgContent, setSvgContent] = useState<string>("");
     const [modifiedSvg, setModifiedSvg] = useState<string>("");
 
-    // Edit Mode State
+    // Mode State
+    const [mode, setMode] = useState<"auto" | "manual">("auto");
     const [isEditMode, setIsEditMode] = useState(false);
     const [selectedSeat, setSelectedSeat] = useState<{ row: string, seat: number } | null>(null);
+
+    // Drag & Drop State
+    const [draggingClass, setDraggingClass] = useState<string | null>(null);
+    const [dropTargetSeat, setDropTargetSeat] = useState<{ row: string, seat: number } | null>(null);
 
     const shiftNames = ["Primo turno", "Secondo turno", "Terzo turno", "Quarto turno"];
 
@@ -176,25 +215,24 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
     }, []);
 
     useEffect(() => {
-        // Try to load from local storage first
         const savedData = loadFromLocalStorage(selectedShift);
         if (savedData) {
             setAssignments(savedData.assignments);
             setClassColors(savedData.classColors);
             setUnassignedClasses(savedData.unassignedClasses || []);
+            setMode(savedData.mode || "auto");
         } else {
-            // No saved data, run auto assign
             autoAssignSeats();
         }
-    }, [selectedShift, shifts]); // dependencies
+    }, [selectedShift, shifts]);
 
-    // Helper to save state
-    const saveToLocalStorage = (currentAssignments: SeatAssignment[], currentColors: { [id: string]: string }, currentUnassigned: string[]) => {
+    const saveToLocalStorage = (currentAssignments: SeatAssignment[], currentColors: { [id: string]: string }, currentUnassigned: string[], currentMode: "auto" | "manual") => {
         try {
             const data = {
                 assignments: currentAssignments,
                 classColors: currentColors,
                 unassignedClasses: currentUnassigned,
+                mode: currentMode,
                 timestamp: Date.now()
             };
             localStorage.setItem(STORAGE_KEY_PREFIX + selectedShift, JSON.stringify(data));
@@ -218,7 +256,7 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
         if (svgContent) {
             updateSvgColors();
         }
-    }, [svgContent, assignments, isEditMode, selectedSeat]);
+    }, [svgContent, assignments, isEditMode, selectedSeat, dropTargetSeat]);
 
     const autoAssignSeats = () => {
         const classes = shifts[selectedShift] || [];
@@ -229,14 +267,12 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
             return;
         }
 
-        // Assign colors
         const colors: { [classId: string]: string } = {};
         classes.forEach((cls, i) => {
             colors[cls.classId] = COLORS[i % COLORS.length];
         });
         setClassColors(colors);
 
-        // Create bins from blocks
         const bins: Bin[] = [];
         BLOCKS.forEach((block, blockIdx) => {
             bins.push({
@@ -255,19 +291,15 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
             });
         });
 
-        // Find best assignment
         const { assigned, unassigned } = findBestAssignment(classes, bins);
 
-        // Now assign actual seats
         const occupied: Set<string> = new Set();
         const newAssignments: SeatAssignment[] = [];
         const seatKey = (row: string, seat: number) => `${row}-${seat}`;
 
-        // Process bins in order
         for (const bin of bins) {
             const block = BLOCKS[bin.blockIdx];
 
-            // Get all available seats for this bin
             const binSeats: { row: string; seat: number }[] = [];
             for (const row of block.rows) {
                 for (const seat of SEATS_CONFIG[row][bin.side]) {
@@ -277,7 +309,6 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
                 }
             }
 
-            // Assign seats to classes in this bin
             let seatIndex = 0;
             for (const cls of bin.classes) {
                 const seatsNeeded = cls.students + 1;
@@ -293,58 +324,157 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
                 }
             }
         }
-        if (unassigned.length > 0) {
-            // Check if we have unassigned because of algorithm limitations or full capacity
-            // Try to fill any remaining gaps even if suboptimal
-            const leftGaps = bins.filter(b => b.side === "left" && b.capacity > b.usedCapacity);
-            const rightGaps = bins.filter(b => b.side === "right" && b.capacity > b.usedCapacity);
-
-            for (let i = unassigned.length - 1; i >= 0; i--) {
-                const cls = unassigned[i];
-                const seatsNeeded = cls.students + 1;
-
-                // Extremely simple fallback: check ANY bin
-                let placed = false;
-                for (const bin of [...leftGaps, ...rightGaps]) {
-                    if (bin.capacity - bin.usedCapacity >= seatsNeeded) {
-                        bin.classes.push(cls);
-                        bin.usedCapacity += seatsNeeded;
-                        assigned.set(cls.classId, bin);
-                        unassigned.splice(i, 1);
-                        placed = true;
-                        break;
-                    }
-                }
-            }
-        }
-
 
         setAssignments(newAssignments);
         setUnassignedClasses(unassigned.map(c => c.classId));
-        saveToLocalStorage(newAssignments, colors, unassigned.map(c => c.classId));
+        setMode("auto");
+        saveToLocalStorage(newAssignments, colors, unassigned.map(c => c.classId), "auto");
+    };
+
+    const clearAllAssignments = () => {
+        const classes = shifts[selectedShift] || [];
+        const colors: { [classId: string]: string } = {};
+        classes.forEach((cls, i) => {
+            colors[cls.classId] = COLORS[i % COLORS.length];
+        });
+        setClassColors(colors);
+        setAssignments([]);
+        setUnassignedClasses(classes.map(c => c.classId));
+        setMode("manual");
+        saveToLocalStorage([], colors, classes.map(c => c.classId), "manual");
+    };
+
+    // Reset current shift (clears corrupted localStorage and re-runs auto)
+    const resetCurrentShift = () => {
+        localStorage.removeItem(STORAGE_KEY_PREFIX + selectedShift);
+        autoAssignSeats();
+    };
+
+    // Export all shifts to JSON file
+    const exportToJsonFile = () => {
+        const allData: { [shift: string]: any } = {};
+        shiftNames.forEach(shiftName => {
+            const raw = localStorage.getItem(STORAGE_KEY_PREFIX + shiftName);
+            if (raw) {
+                allData[shiftName] = JSON.parse(raw);
+            }
+        });
+        const blob = new Blob([JSON.stringify(allData, null, 2)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `seating_map_config_${new Date().toISOString().split('T')[0]}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    };
+
+    // Import from JSON file
+    const importFromJsonFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            try {
+                const data = JSON.parse(event.target?.result as string);
+                // Save each shift
+                Object.entries(data).forEach(([shiftName, shiftData]) => {
+                    localStorage.setItem(STORAGE_KEY_PREFIX + shiftName, JSON.stringify(shiftData));
+                });
+                // Reload current shift
+                const savedData = loadFromLocalStorage(selectedShift);
+                if (savedData) {
+                    setAssignments(savedData.assignments);
+                    setClassColors(savedData.classColors);
+                    setUnassignedClasses(savedData.unassignedClasses || []);
+                    setMode(savedData.mode || "auto");
+                }
+                alert('✅ Configurazione importata con successo!');
+            } catch (err) {
+                alert('❌ Errore nel file JSON');
+                console.error(err);
+            }
+        };
+        reader.readAsText(file);
+        e.target.value = ''; // Reset input
+    };
+
+    // Drag & Drop Handlers
+    const handleDragStart = (e: DragEvent<HTMLDivElement>, classId: string) => {
+        e.dataTransfer.setData("text/plain", classId);
+        setDraggingClass(classId);
+    };
+
+    const handleDragEnd = () => {
+        setDraggingClass(null);
+        setDropTargetSeat(null);
+    };
+
+    const handleSvgDrop = (row: string, seat: number) => {
+        if (!draggingClass) return;
+
+        const cls = shifts[selectedShift]?.find(c => c.classId === draggingClass);
+        if (!cls) return;
+
+        const seatsNeeded = cls.students + 1;
+        const seatsToAssign = smartFill(row, seat, seatsNeeded, assignments);
+
+        if (seatsToAssign.length === 0) {
+            console.warn("No available seats in this block/side");
+            return;
+        }
+
+        const color = classColors[draggingClass] || COLORS[0];
+        const newAssignments: SeatAssignment[] = [
+            ...assignments,
+            ...seatsToAssign.map(s => ({
+                row: s.row,
+                seat: s.seat,
+                classId: draggingClass,
+                color
+            }))
+        ];
+
+        const newUnassigned = unassignedClasses.filter(id => id !== draggingClass);
+
+        setAssignments(newAssignments);
+        setUnassignedClasses(newUnassigned);
+        setDraggingClass(null);
+        setDropTargetSeat(null);
+        saveToLocalStorage(newAssignments, classColors, newUnassigned, mode);
+    };
+
+    // Remove a class from the map (send back to unassigned)
+    const removeClassFromMap = (classId: string) => {
+        const newAssignments = assignments.filter(a => a.classId !== classId);
+        const newUnassigned = [...unassignedClasses, classId];
+
+        setAssignments(newAssignments);
+        setUnassignedClasses(newUnassigned);
+        saveToLocalStorage(newAssignments, classColors, newUnassigned, mode);
     };
 
     const handleSeatClick = (row: string, seat: number) => {
+        // If dragging, drop here
+        if (draggingClass) {
+            handleSvgDrop(row, seat);
+            return;
+        }
+
         if (!isEditMode) return;
 
-        const clickedSeatKey = `${row}-${seat}`;
-
-        // Find if any assignment exists at this seat
         const assignmentIndex = assignments.findIndex(a => a.row === row && a.seat === seat);
         const assignment = assignmentIndex !== -1 ? assignments[assignmentIndex] : null;
 
         if (selectedSeat) {
-            // If dragging/swapping
             if (selectedSeat.row === row && selectedSeat.seat === seat) {
-                // Deselect if clicking same seat
                 setSelectedSeat(null);
                 return;
             }
 
-            // Perform swap
             const newAssignments = [...assignments];
-
-            // Find index of the currently selected seat
             const selectedIndex = newAssignments.findIndex(a => a.row === selectedSeat.row && a.seat === selectedSeat.seat);
 
             if (selectedIndex === -1) {
@@ -352,26 +482,18 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
                 return;
             }
 
-            // We are moving 'selected' to 'target' (clicked)
-
             if (assignment) {
-                // Swap logic: Target has a class
-                // Update target to have selected's location
                 newAssignments[assignmentIndex] = {
                     ...newAssignments[assignmentIndex],
                     row: selectedSeat.row,
                     seat: selectedSeat.seat
                 };
-
-                // Update selected to have target's location
                 newAssignments[selectedIndex] = {
                     ...newAssignments[selectedIndex],
                     row: row,
                     seat: seat
                 };
             } else {
-                // Move logic: Target is empty
-                // Just update selected to new location
                 newAssignments[selectedIndex] = {
                     ...newAssignments[selectedIndex],
                     row: row,
@@ -379,13 +501,10 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
                 };
             }
 
-
             setAssignments(newAssignments);
             setSelectedSeat(null);
-            saveToLocalStorage(newAssignments, classColors, unassignedClasses);
-
+            saveToLocalStorage(newAssignments, classColors, unassignedClasses, mode);
         } else {
-            // Select logic
             if (assignment) {
                 setSelectedSeat({ row, seat });
             }
@@ -403,7 +522,6 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
         const parser = new DOMParser();
         const doc = parser.parseFromString(svgContent, "image/svg+xml");
 
-        // 1. Update Seats
         ROWS.forEach(row => {
             const rowGroup = doc.getElementById(row);
             if (!rowGroup) return;
@@ -417,7 +535,7 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
                 const seatNum = parseInt(serifId);
                 if (isNaN(seatNum) || seatNum < 1 || seatNum > 30) return;
 
-                const color = seatColorMap.get(`${row}-${seatNum}`) || 'transparent'; // Use transparent to catch clicks inside
+                const color = seatColorMap.get(`${row}-${seatNum}`) || 'transparent';
 
                 const pathElement = el.tagName === 'path'
                     ? el
@@ -425,53 +543,36 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
 
                 if (pathElement) {
                     const currentStyle = pathElement.getAttribute("style") || "";
-                    // Reset fill first
                     let newStyle = currentStyle.replace(/fill:[^;]+;?/g, "");
-                    // Add new fill
                     newStyle += `fill:${color};`;
 
-                    // Highlight selected seat
-                    if (isEditMode && selectedSeat && selectedSeat.row === row && selectedSeat.seat === seatNum) {
+                    // Highlight drop target
+                    if (dropTargetSeat && dropTargetSeat.row === row && dropTargetSeat.seat === seatNum) {
+                        newStyle += "stroke:#22c55e;stroke-width:3px;";
+                    } else if (isEditMode && selectedSeat && selectedSeat.row === row && selectedSeat.seat === seatNum) {
                         newStyle += "stroke:black;stroke-width:2px;";
-                    } else if (isEditMode) {
+                    } else if (isEditMode || draggingClass) {
                         newStyle += "cursor:pointer;pointer-events:all;";
                     }
 
-                    // Apply the complete style to the path
                     pathElement.setAttribute("style", newStyle);
 
-                    // Add Click Handler Logic via data attrs
-                    // Add attributes to the container logic
                     if (el !== pathElement) {
-                        // If it's a group, we can add cursor pointer here too for better UX
                         el.setAttribute("style", "cursor: pointer;");
                         el.setAttribute("data-row", row);
                         el.setAttribute("data-seat", seatNum.toString());
                         el.setAttribute("class", "seat-element");
                     } else {
-                        // If el IS the path, we already set the style above.
-                        // Just ensure data attributes are set.
-                        // The class is redundant if we rely on data attrs, but good for consistency.
                         pathElement.setAttribute("class", "seat-element");
                     }
 
-                    // Always ensure path has data attributes as fallback
-                    pathElement.setAttribute("data-row", row);
-                    pathElement.setAttribute("data-seat", seatNum.toString());
-
-                    // Also keep attributes on path for safety or specific styling
                     pathElement.setAttribute("data-row", row);
                     pathElement.setAttribute("data-seat", seatNum.toString());
                 }
             });
         });
 
-
-
-
-        // 2. Update Legend (Custom Sector Sorting & High Contrast)
-
-        // Helper: Get contrast color (white/black) based on background hex
+        // Legend update logic
         const getContrastColor = (hex: string) => {
             if (!hex) return 'black';
             const r = parseInt(hex.substr(1, 2), 16);
@@ -481,35 +582,31 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
             return (yiq >= 128) ? 'black' : 'white';
         };
 
-        // Helper: Determine sector index (0-7) for a class
         const getClassSectorIndex = (className: string) => {
             const classSeats = assignments.filter(a => a.classId === className);
             if (classSeats.length === 0) return 8;
-
             const representative = classSeats[0];
             const r = representative.row;
             const s = representative.seat;
             const isRight = s > 15;
-
             if (['A', 'B', 'C'].includes(r)) return isRight ? 1 : 0;
             if (['D', 'E', 'F', 'G'].includes(r)) return isRight ? 3 : 2;
             if (['H', 'I', 'L'].includes(r)) return isRight ? 5 : 4;
             if (['M', 'N', 'O', 'P', 'Q', 'R', 'S'].includes(r)) return isRight ? 7 : 6;
-
             return 8;
         };
 
-        // Group classes by sector
         const sectors: string[][] = Array(9).fill(null).map(() => []);
         Object.keys(classColors).forEach(className => {
-            const idx = getClassSectorIndex(className);
-            sectors[idx].push(className);
+            if (!unassignedClasses.includes(className)) {
+                const idx = getClassSectorIndex(className);
+                sectors[idx].push(className);
+            }
         });
 
         const legendMap = new Map<number, { className: string, color: string }>();
-
         sectors.forEach((sectorClasses, sectorIdx) => {
-            sectorClasses.sort(); // Sort inside the sector
+            sectorClasses.sort();
             const startSlot = (sectorIdx * 4) + 1;
             sectorClasses.forEach((className, i) => {
                 if (i < 4) {
@@ -521,14 +618,12 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
             });
         });
 
-        // Use a loop from 1 to 32 instead of forEach on sortedClasses
         const slotIndices = Array.from({ length: 32 }, (_, i) => i + 1);
         slotIndices.forEach((idx) => {
             const data = legendMap.get(idx);
             const classId = data ? data.className : "";
             const color = data ? data.color : "";
 
-            // 1. Text Element
             const textId = `legend_text_${idx}`;
             const textGroup = doc.getElementById(textId);
             if (textGroup) {
@@ -546,7 +641,6 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
                 }
             }
 
-            // 2. Rect Element
             const rectId = `legend_rect_${idx}`;
             const rectGroup = doc.getElementById(rectId);
             if (rectGroup) {
@@ -562,14 +656,11 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
             }
         });
 
-        // Hide only remaining slots if any (33-50)
         for (let i = 33; i <= 50; i++) {
             const textId = `legend_text_${i}`;
             const rectId = `legend_rect_${i}`;
-            // Use same generic check (group or element)
             const textGroup = doc.getElementById(textId);
             const rectGroup = doc.getElementById(rectId);
-
             if (textGroup) textGroup.setAttribute("style", "display:none");
             if (rectGroup) rectGroup.setAttribute("style", "display:none");
         }
@@ -596,9 +687,11 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
         const currentIndex = shiftNames.indexOf(selectedShift);
         const newIndex = (currentIndex + direction + shiftNames.length) % shiftNames.length;
         setSelectedShift(shiftNames[newIndex]);
-        // Reset selections when changing shift
         setSelectedSeat(null);
     };
+
+    // Unassigned classes for the sidebar
+    const unassignedClassObjects = (shifts[selectedShift] || []).filter(c => unassignedClasses.includes(c.classId));
 
     return (
         <div style={{
@@ -616,7 +709,7 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
         }}>
             <div style={{
                 width: '100%',
-                maxWidth: '1400px',
+                maxWidth: '1600px',
                 height: '95vh',
                 display: 'flex',
                 flexDirection: 'column',
@@ -624,6 +717,7 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
                 borderRadius: '12px',
                 overflow: 'hidden'
             }}>
+                {/* Header */}
                 <div style={{
                     padding: '1rem 1.5rem',
                     borderBottom: '1px solid #e5e7eb',
@@ -661,6 +755,17 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
                         <span style={{ color: '#6b7280', fontSize: '0.875rem' }}>
                             {shifts[selectedShift]?.length || 0} classi • {assignments.length} posti
                         </span>
+                        {/* Mode indicator */}
+                        <span style={{
+                            padding: '0.25rem 0.75rem',
+                            borderRadius: '999px',
+                            fontSize: '0.75rem',
+                            fontWeight: 'bold',
+                            background: mode === 'auto' ? '#dbeafe' : '#fef9c3',
+                            color: mode === 'auto' ? '#1d4ed8' : '#a16207'
+                        }}>
+                            {mode === 'auto' ? '🤖 Auto' : '✋ Manuale'}
+                        </span>
                     </div>
                     <div style={{ display: 'flex', gap: '0.5rem' }}>
                         <button
@@ -671,12 +776,30 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
                                 display: 'flex',
                                 gap: '0.5rem',
                                 alignItems: 'center',
-                                background: 'white',
+                                background: mode === 'auto' ? '#dbeafe' : 'white',
                                 border: '1px solid #d1d5db',
                                 borderRadius: '6px'
                             }}
+                            title="Assegnazione automatica"
                         >
-                            <RefreshCw size={16} /> Riassegna
+                            <Wand2 size={16} /> Auto
+                        </button>
+
+                        <button
+                            onClick={clearAllAssignments}
+                            style={{
+                                padding: '0.5rem 1rem',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                gap: '0.5rem',
+                                alignItems: 'center',
+                                background: mode === 'manual' ? '#fef9c3' : 'white',
+                                border: '1px solid #d1d5db',
+                                borderRadius: '6px'
+                            }}
+                            title="Svuota tutto e gestisci manualmente"
+                        >
+                            <Hand size={16} /> Manuale
                         </button>
 
                         <button
@@ -691,13 +814,32 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
                                 gap: '0.5rem',
                                 alignItems: 'center',
                                 background: isEditMode ? '#fee2e2' : 'white',
-                                borderColor: isEditMode ? '#ef4444' : '#d1d5db',
+                                border: isEditMode ? '1px solid #ef4444' : '1px solid #d1d5db',
                                 color: isEditMode ? '#b91c1c' : 'inherit',
-                                border: '1px solid',
                                 borderRadius: '6px'
                             }}
                         >
-                            ✏️ {isEditMode ? 'Disattiva Modifica' : '✏️ Modifica'}
+                            ✏️ {isEditMode ? 'Fine Modifica' : 'Modifica Singoli'}
+                        </button>
+
+                        <button
+                            onClick={() => {
+                                saveToLocalStorage(assignments, classColors, unassignedClasses, mode);
+                                alert('✅ Mappa salvata con successo!');
+                            }}
+                            style={{
+                                padding: '0.5rem 1rem',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                gap: '0.5rem',
+                                alignItems: 'center',
+                                background: '#dcfce7',
+                                border: '1px solid #86efac',
+                                color: '#166534',
+                                borderRadius: '6px'
+                            }}
+                        >
+                            <Save size={16} /> Salva
                         </button>
 
                         <button
@@ -716,6 +858,66 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
                         >
                             <Download size={16} /> Scarica SVG
                         </button>
+
+                        <button
+                            onClick={exportToJsonFile}
+                            style={{
+                                padding: '0.5rem 1rem',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                gap: '0.5rem',
+                                alignItems: 'center',
+                                background: '#fef3c7',
+                                border: '1px solid #fcd34d',
+                                color: '#92400e',
+                                borderRadius: '6px'
+                            }}
+                            title="Esporta configurazione JSON"
+                        >
+                            📤 Export
+                        </button>
+
+                        <label style={{
+                            padding: '0.5rem 1rem',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            gap: '0.5rem',
+                            alignItems: 'center',
+                            background: '#e0e7ff',
+                            border: '1px solid #a5b4fc',
+                            color: '#3730a3',
+                            borderRadius: '6px'
+                        }}>
+                            📥 Import
+                            <input
+                                type="file"
+                                accept=".json"
+                                onChange={importFromJsonFile}
+                                style={{ display: 'none' }}
+                            />
+                        </label>
+
+                        <button
+                            onClick={() => {
+                                if (confirm('Vuoi resettare la mappa di questo turno?')) {
+                                    resetCurrentShift();
+                                }
+                            }}
+                            style={{
+                                padding: '0.5rem 1rem',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                gap: '0.5rem',
+                                alignItems: 'center',
+                                background: '#fee2e2',
+                                border: '1px solid #fca5a5',
+                                color: '#b91c1c',
+                                borderRadius: '6px'
+                            }}
+                            title="Reset mappa turno corrente"
+                        >
+                            🔄 Reset
+                        </button>
                         <button
                             onClick={onClose}
                             style={{
@@ -731,11 +933,142 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
                     </div>
                 </div>
 
+                {/* Main content: Sidebar + Map */}
                 <div style={{
                     flex: 1,
                     display: 'flex',
                     overflow: 'hidden'
                 }}>
+                    {/* LEFT SIDEBAR: Unassigned Classes */}
+                    <div style={{
+                        width: '320px',
+                        minWidth: '320px',
+                        borderRight: '1px solid #e5e7eb',
+                        padding: '1rem',
+                        overflowY: 'auto',
+                        background: '#f9fafb',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '1rem'
+                    }}>
+                        <div>
+                            <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '0.875rem', color: '#374151', fontWeight: 'bold' }}>
+                                📦 Classi da Piazzare ({unassignedClassObjects.length})
+                            </h3>
+                            <p style={{ margin: 0, fontSize: '0.75rem', color: '#6b7280' }}>
+                                Trascina una classe sulla mappa per piazzarla.
+                            </p>
+                        </div>
+
+                        {unassignedClassObjects.length === 0 ? (
+                            <div style={{
+                                padding: '2rem 1rem',
+                                textAlign: 'center',
+                                color: '#6b7280',
+                                fontSize: '0.875rem',
+                                border: '2px dashed #d1d5db',
+                                borderRadius: '8px'
+                            }}>
+                                ✅ Tutte le classi sono piazzate!
+                            </div>
+                        ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                {unassignedClassObjects.map(cls => (
+                                    <div
+                                        key={cls.classId}
+                                        draggable
+                                        onDragStart={(e) => handleDragStart(e, cls.classId)}
+                                        onDragEnd={handleDragEnd}
+                                        style={{
+                                            padding: '0.75rem',
+                                            background: draggingClass === cls.classId ? '#dbeafe' : 'white',
+                                            border: '1px solid #d1d5db',
+                                            borderRadius: '8px',
+                                            cursor: 'grab',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '0.75rem',
+                                            transition: 'all 0.2s',
+                                            boxShadow: draggingClass === cls.classId ? '0 4px 12px rgba(0,0,0,0.15)' : undefined
+                                        }}
+                                    >
+                                        <div style={{
+                                            width: 24,
+                                            height: 24,
+                                            borderRadius: 4,
+                                            background: classColors[cls.classId] || '#ccc',
+                                            flexShrink: 0
+                                        }} />
+                                        <div style={{ flex: 1, minWidth: 0 }}>
+                                            <div style={{ fontWeight: 'bold', fontSize: '0.875rem', color: '#111827', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                {cls.classId}
+                                            </div>
+                                            <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>
+                                                {cls.students + 1} posti necessari
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        {/* Assigned classes (for reference and removal) */}
+                        <div style={{ marginTop: '1rem' }}>
+                            <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '0.875rem', color: '#374151', fontWeight: 'bold' }}>
+                                ✅ Classi Piazzate
+                            </h3>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                {Object.entries(classColors)
+                                    .filter(([classId]) => !unassignedClasses.includes(classId))
+                                    .map(([classId, color]) => {
+                                        const seatsUsed = assignments.filter(a => a.classId === classId).length;
+                                        return (
+                                            <div
+                                                key={classId}
+                                                style={{
+                                                    padding: '0.5rem 0.75rem',
+                                                    background: 'white',
+                                                    border: '1px solid #d1d5db',
+                                                    borderRadius: '8px',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '0.5rem'
+                                                }}
+                                            >
+                                                <div style={{
+                                                    width: 16,
+                                                    height: 16,
+                                                    borderRadius: 4,
+                                                    background: color,
+                                                    flexShrink: 0
+                                                }} />
+                                                <div style={{ flex: 1, fontSize: '0.75rem', minWidth: 0 }}>
+                                                    <span style={{ fontWeight: 'bold', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block' }}>{classId}</span>
+                                                    <span style={{ color: '#6b7280' }}> ({seatsUsed})</span>
+                                                </div>
+                                                <button
+                                                    onClick={() => removeClassFromMap(classId)}
+                                                    style={{
+                                                        padding: '0.25rem',
+                                                        background: '#fee2e2',
+                                                        border: 'none',
+                                                        borderRadius: '4px',
+                                                        cursor: 'pointer',
+                                                        color: '#dc2626',
+                                                        fontSize: '0.75rem'
+                                                    }}
+                                                    title="Rimuovi dalla mappa"
+                                                >
+                                                    ✕
+                                                </button>
+                                            </div>
+                                        );
+                                    })}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* MAP AREA */}
                     <div style={{
                         flex: 1,
                         overflow: 'auto',
@@ -746,33 +1079,36 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
                         padding: '1rem',
                         position: 'relative'
                     }}>
-                        {isEditMode && (
+                        {/* Instructions banner */}
+                        {(isEditMode || draggingClass) && (
                             <div style={{
                                 position: 'absolute',
                                 top: '1rem',
                                 left: '50%',
                                 transform: 'translateX(-50%)',
-                                background: '#fee2e2',
-                                color: '#b91c1c',
+                                background: draggingClass ? '#dcfce7' : '#fee2e2',
+                                color: draggingClass ? '#166534' : '#b91c1c',
                                 padding: '0.5rem 1rem',
                                 borderRadius: '999px',
                                 boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
                                 zIndex: 10,
                                 fontWeight: 'bold',
                                 fontSize: '0.875rem',
-                                border: '1px solid #fca5a5'
+                                border: draggingClass ? '1px solid #86efac' : '1px solid #fca5a5'
                             }}>
-                                {selectedSeat
-                                    ? `Posto ${selectedSeat.row}-${selectedSeat.seat} selezionato. Clicca su un altro posto per SCAMBIARE.`
-                                    : "Clicca su un posto per SELEZIONARLO, poi clicca su un altro per SPOSTARE."}
+                                {draggingClass
+                                    ? `Rilascia "${draggingClass}" su un posto per piazzarla (Smart Fill attivo)`
+                                    : selectedSeat
+                                        ? `Posto ${selectedSeat.row}-${selectedSeat.seat} selezionato. Clicca su un altro posto per SCAMBIARE.`
+                                        : "Clicca su un posto per SELEZIONARLO, poi clicca su un altro per SPOSTARE."}
                             </div>
                         )}
+
                         {modifiedSvg ? (
                             <div
                                 dangerouslySetInnerHTML={{ __html: modifiedSvg }}
                                 style={{ width: '100%', minWidth: '900px', height: 'auto' }}
                                 onClick={(e) => {
-                                    // Event Delegation for SVG clicks
                                     const target = e.target as HTMLElement;
                                     const seatEl = target.closest('[data-row]');
                                     if (seatEl) {
@@ -783,66 +1119,29 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
                                         }
                                     }
                                 }}
+                                onDragOver={(e) => {
+                                    e.preventDefault();
+                                    const target = e.target as HTMLElement;
+                                    const seatEl = target.closest('[data-row]');
+                                    if (seatEl) {
+                                        const row = seatEl.getAttribute('data-row');
+                                        const seat = parseInt(seatEl.getAttribute('data-seat') || "0");
+                                        if (row && seat) {
+                                            setDropTargetSeat({ row, seat });
+                                        }
+                                    }
+                                }}
+                                onDragLeave={() => setDropTargetSeat(null)}
+                                onDrop={(e) => {
+                                    e.preventDefault();
+                                    if (dropTargetSeat) {
+                                        handleSvgDrop(dropTargetSeat.row, dropTargetSeat.seat);
+                                    }
+                                }}
                             />
                         ) : (
                             <div style={{ padding: '2rem', color: '#6b7280' }}>
                                 Caricamento mappa...
-                            </div>
-                        )}
-                    </div>
-
-                    <div style={{
-                        width: '220px',
-                        borderLeft: '1px solid #e5e7eb',
-                        padding: '1rem',
-                        overflowY: 'auto',
-                        background: '#f9fafb'
-                    }}>
-                        <h3 style={{ margin: '0 0 1rem 0', fontSize: '0.875rem', color: '#374151', fontWeight: 'bold' }}>
-                            Legenda Classi
-                        </h3>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                            {/* Legend is now in SVG, but we keep this list for reference/stats */}
-                            {Object.entries(classColors).map(([classId, color]) => {
-                                const cls = shifts[selectedShift]?.find(c => c.classId === classId);
-                                const seatsUsed = assignments.filter(a => a.classId === classId).length;
-
-                                return (
-                                    <div key={classId} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                        <div style={{
-                                            width: 20,
-                                            height: 20,
-                                            borderRadius: 4,
-                                            background: color,
-                                            flexShrink: 0
-                                        }} />
-                                        <div>
-                                            <div style={{ fontWeight: 'bold', fontSize: '0.875rem', color: '#111827' }}>
-                                                {classId}
-                                            </div>
-                                            <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>
-                                                {seatsUsed} posti ({cls?.students || 0} studenti)
-                                            </div>
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-
-                        {unassignedClasses.length > 0 && (
-                            <div style={{
-                                marginTop: '1rem',
-                                padding: '0.75rem',
-                                background: '#fef2f2',
-                                borderRadius: 8,
-                                border: '1px solid #fecaca'
-                            }}>
-                                <div style={{ fontSize: '0.75rem', color: '#dc2626', fontWeight: 'bold' }}>
-                                    ⚠️ Non assegnate:
-                                </div>
-                                <div style={{ fontSize: '0.75rem', color: '#dc2626' }}>
-                                    {unassignedClasses.join(", ")}
-                                </div>
                             </div>
                         )}
                     </div>
