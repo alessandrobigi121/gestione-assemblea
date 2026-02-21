@@ -1,6 +1,5 @@
-
-import { Calendar, Eye, EyeOff, Upload, Download, Ban, Map, RefreshCw, Copy, RotateCcw, Settings, BarChart3 } from "lucide-react";
-import { useRef } from "react";
+import { Calendar, Eye, EyeOff, Upload, Download, Ban, Map, RefreshCw, Copy, RotateCcw, Settings, BarChart3, Sun, Moon } from "lucide-react";
+import { useRef, useState, useEffect } from "react";
 import Link from "next/link";
 
 interface StatsHeaderProps {
@@ -43,6 +42,30 @@ export default function StatsHeader({
     pdfExportElement
 }: StatsHeaderProps) {
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const [isLightMode, setIsLightMode] = useState(false);
+
+    // Initialize theme from localStorage on mount
+    useEffect(() => {
+        const savedTheme = localStorage.getItem('assemblea_theme');
+        if (savedTheme === 'light') {
+            setIsLightMode(true);
+            document.body.classList.add('light-theme');
+        }
+    }, []);
+
+    const toggleTheme = () => {
+        setIsLightMode(prev => {
+            const next = !prev;
+            if (next) {
+                document.body.classList.add('light-theme');
+                localStorage.setItem('assemblea_theme', 'light');
+            } else {
+                document.body.classList.remove('light-theme');
+                localStorage.setItem('assemblea_theme', 'dark');
+            }
+            return next;
+        });
+    };
 
     return (
         <header className="flex-row justify-between items-center print:hidden" style={{ marginBottom: '2rem', marginTop: '1.5rem', paddingBottom: '1.5rem', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
@@ -68,10 +91,10 @@ export default function StatsHeader({
                     <select
                         value={selectedDay}
                         onChange={(e) => onDayChange(e.target.value)}
-                        style={{ background: 'transparent', color: 'white', border: 'none', fontWeight: 'bold', cursor: 'pointer' }}
+                        style={{ background: 'transparent', color: 'inherit', border: 'none', fontWeight: 'bold', cursor: 'pointer' }}
                     >
                         {["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato"].map(d => (
-                            <option key={d} value={d} style={{ background: '#1e293b' }}>{d}</option>
+                            <option key={d} value={d} style={{ color: 'black' }}>{d}</option>
                         ))}
                     </select>
                 </div>
@@ -184,6 +207,16 @@ export default function StatsHeader({
                     title="Reset"
                 >
                     <RefreshCw size={16} />
+                </button>
+
+                {/* Theme Toggle Button */}
+                <button
+                    onClick={toggleTheme}
+                    className="glass-panel hover:bg-white/10"
+                    style={{ padding: '0.5rem 1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem', color: isLightMode ? '#f59e0b' : '#fcd34d' }}
+                    title={isLightMode ? "Passa al tema Scuro" : "Passa al tema Chiaro"}
+                >
+                    {isLightMode ? <Sun size={16} /> : <Moon size={16} />}
                 </button>
 
                 <Link

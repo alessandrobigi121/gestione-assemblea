@@ -343,7 +343,7 @@ export default function Dashboard() {
         Object.values(shifts).forEach(list => allClasses.push(...list));
 
         const MAX_CAPACITY = maxCapacity;
-        const MAX_ATTEMPTS = 200000;
+        const MAX_ATTEMPTS = 500000;
 
         // Shuffle array helper
         const shuffle = <T,>(array: T[]): T[] => {
@@ -615,7 +615,7 @@ export default function Dashboard() {
                             Ricerca Ottimizzazione Turni
                         </h2>
                         <p style={{ opacity: 0.8, fontSize: '0.9rem', margin: 0 }}>
-                            Analisi fino a 200.000 combinazioni per azzerare i conflitti docenti e rispettare i vincoli...
+                            Analisi fino a 500.000 combinazioni per azzerare i conflitti docenti e rispettare i vincoli...
                         </p>
 
                         <div style={{

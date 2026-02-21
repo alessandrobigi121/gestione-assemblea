@@ -12,6 +12,15 @@
   --glass-border: rgba(255, 255, 255, 0.1);
 }
 
+body.light-theme {
+  --background: #f8fafc;
+  --foreground: #0f172a;
+  --secondary: #e2e8f0;
+  --card-bg: rgba(255, 255, 255, 0.85);
+  --glass-border: rgba(0, 0, 0, 0.1);
+  background: radial-gradient(circle at top left, #f1f5f9, #e2e8f0);
+}
+
 * {
   box-sizing: border-box;
   padding: 0;
@@ -23,8 +32,9 @@ body {
   background-color: var(--background);
   color: var(--foreground);
   min-height: 100vh;
-  /* Premium modern gradient background */
+  /* Premium modern gradient background - this is overwritten by body.light-theme */
   background: radial-gradient(circle at top left, #1e1b4b, #0f172a);
+  transition: background 0.3s ease, color 0.3s ease;
 }
 
 button {
