@@ -1,0 +1,11 @@
+
+> assembly-manager@0.1.0 dev
+> next dev
+
+▲ Next.js 16.1.1 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://192.168.20.176:3000
+
+✓ Starting...
+✓ Ready in 156.6s
+[?25h

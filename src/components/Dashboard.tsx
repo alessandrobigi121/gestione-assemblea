@@ -337,7 +337,8 @@ export default function Dashboard() {
         const allClasses = [...unassignedClasses];
         Object.values(shifts).forEach(list => allClasses.push(...list));
 
-        const MAX_CAPACITY = 499;
+        const MAX_CAPACITY = maxCapacity;
+        const MAX_ATTEMPTS = 5000;
 
         // Shuffle array helper
         const shuffle = <T,>(array: T[]): T[] => {
@@ -360,19 +361,11 @@ export default function Dashboard() {
             return cls.weekType?.toLowerCase().includes('corta') ?? false;
         };
 
-        // Create new shifts with student counts
-        const newShifts: { [key: string]: AssemblyEntry[] } = {
-            "Primo turno": [],
-            "Secondo turno": [],
-            "Terzo turno": [],
-            "Quarto turno": []
-        };
-
         // Only first 3 shifts for settimana lunga classes
         const shiftsForLunga = ["Primo turno", "Secondo turno", "Terzo turno"];
-        const allShifts = ["Primo turno", "Secondo turno", "Terzo turno", "Quarto turno"];
+        const allShiftNames = ["Primo turno", "Secondo turno", "Terzo turno", "Quarto turno"];
 
-        const getShiftStudents = (shift: string): number => {
+        const getShiftStudents = (shift: string, newShifts: { [key: string]: AssemblyEntry[] }): number => {
             return newShifts[shift].reduce((sum, c) => sum + c.students, 0);
         };
 
@@ -384,63 +377,122 @@ export default function Dashboard() {
         };
 
         // Check if adding class would exceed capacity
-        const hasCapacity = (shift: string, students: number): boolean => {
-            return getShiftStudents(shift) + students <= MAX_CAPACITY;
+        const hasCapacity = (shift: string, students: number, newShifts: { [key: string]: AssemblyEntry[] }): boolean => {
+            return getShiftStudents(shift, newShifts) + students <= MAX_CAPACITY;
         };
 
-        // Find best shift considering preference and balance
-        const findBestShift = (cls: AssemblyEntry, preferredOrder: string[]): string | null => {
-            for (const shift of preferredOrder) {
-                if (checkConstraint(cls, shift) && hasCapacity(shift, cls.students)) {
-                    return shift;
-                }
-            }
-            const validShifts = (isSettimanaCorta(cls) ? allShifts : shiftsForLunga)
-                .filter(s => checkConstraint(cls, s) && hasCapacity(s, cls.students));
-            if (validShifts.length === 0) return null;
-            return validShifts.reduce((a, b) =>
-                getShiftStudents(a) <= getShiftStudents(b) ? a : b
-            );
+        // Count total conflicts for a candidate assignment
+        const countConflicts = (candidateShifts: { [key: string]: AssemblyEntry[] }): number => {
+            const shiftMap: { [key: string]: string[] } = {};
+            Object.keys(candidateShifts).forEach(k => shiftMap[k] = candidateShifts[k].map(c => c.classId));
+            const conflicts = manager.getTeacherConflicts(selectedDay, shiftMap);
+            return Object.values(conflicts).reduce((sum, arr) => sum + arr.length, 0);
         };
 
-        const shuffledClasses = shuffle(allClasses);
-        const leftover: AssemblyEntry[] = [];
+        // Count validation errors
+        const countErrors = (candidateShifts: { [key: string]: AssemblyEntry[] }): number => {
+            let errors = 0;
+            Object.keys(candidateShifts).forEach(shiftName => {
+                const classIds = candidateShifts[shiftName].map(c => c.classId);
+                errors += manager.validateShift(shiftName, classIds, selectedDay).length;
+            });
+            return errors;
+        };
 
-        shuffledClasses.forEach(cls => {
-            const year = getYear(cls.classId);
-            const canDoQuarto = isSettimanaCorta(cls);
-            let preferredOrder: string[];
+        // Single attempt: generate a random assignment
+        const tryAssignment = (): { shifts: { [key: string]: AssemblyEntry[] }; leftover: AssemblyEntry[]; score: number } => {
+            const newShifts: { [key: string]: AssemblyEntry[] } = {
+                "Primo turno": [],
+                "Secondo turno": [],
+                "Terzo turno": [],
+                "Quarto turno": []
+            };
 
-            if (year <= 2) {
-                preferredOrder = Math.random() < 0.6
-                    ? ["Primo turno", "Secondo turno", "Terzo turno"]
-                    : ["Secondo turno", "Primo turno", "Terzo turno"];
-                if (canDoQuarto) preferredOrder.push("Quarto turno");
-            } else if (year >= 4) {
-                if (canDoQuarto) {
+            const shuffledClasses = shuffle(allClasses);
+            const leftover: AssemblyEntry[] = [];
+
+            shuffledClasses.forEach(cls => {
+                const year = getYear(cls.classId);
+                const canDoQuarto = isSettimanaCorta(cls);
+                let preferredOrder: string[];
+
+                if (year <= 2) {
                     preferredOrder = Math.random() < 0.6
-                        ? ["Quarto turno", "Terzo turno", "Secondo turno", "Primo turno"]
-                        : ["Terzo turno", "Quarto turno", "Secondo turno", "Primo turno"];
+                        ? ["Primo turno", "Secondo turno", "Terzo turno"]
+                        : ["Secondo turno", "Primo turno", "Terzo turno"];
+                    if (canDoQuarto) preferredOrder.push("Quarto turno");
+                } else if (year >= 4) {
+                    if (canDoQuarto) {
+                        preferredOrder = Math.random() < 0.6
+                            ? ["Quarto turno", "Terzo turno", "Secondo turno", "Primo turno"]
+                            : ["Terzo turno", "Quarto turno", "Secondo turno", "Primo turno"];
+                    } else {
+                        preferredOrder = Math.random() < 0.6
+                            ? ["Terzo turno", "Secondo turno", "Primo turno"]
+                            : ["Secondo turno", "Terzo turno", "Primo turno"];
+                    }
                 } else {
-                    preferredOrder = Math.random() < 0.6
-                        ? ["Terzo turno", "Secondo turno", "Primo turno"]
-                        : ["Secondo turno", "Terzo turno", "Primo turno"];
+                    preferredOrder = shuffle(canDoQuarto ? allShiftNames : shiftsForLunga);
                 }
-            } else {
-                preferredOrder = shuffle(canDoQuarto ? allShifts : shiftsForLunga);
-            }
 
-            const bestShift = findBestShift(cls, preferredOrder);
-            if (bestShift) {
-                newShifts[bestShift].push(cls);
-            } else {
-                leftover.push(cls);
-            }
-        });
+                // Find best shift considering preference and balance
+                let bestShift: string | null = null;
+                for (const shift of preferredOrder) {
+                    if (checkConstraint(cls, shift) && hasCapacity(shift, cls.students, newShifts)) {
+                        bestShift = shift;
+                        break;
+                    }
+                }
+                if (!bestShift) {
+                    const validShifts = (canDoQuarto ? allShiftNames : shiftsForLunga)
+                        .filter(s => checkConstraint(cls, s) && hasCapacity(s, cls.students, newShifts));
+                    if (validShifts.length > 0) {
+                        bestShift = validShifts.reduce((a, b) =>
+                            getShiftStudents(a, newShifts) <= getShiftStudents(b, newShifts) ? a : b
+                        );
+                    }
+                }
 
-        setShifts(newShifts);
-        setUnassignedClasses(leftover);
-        toast.success("Assegnazione automatica completata");
+                if (bestShift) {
+                    newShifts[bestShift].push(cls);
+                } else {
+                    leftover.push(cls);
+                }
+            });
+
+            const conflictScore = countConflicts(newShifts);
+            const errorScore = countErrors(newShifts);
+            const leftoverPenalty = leftover.length * 100; // heavily penalize unassigned classes
+            const score = conflictScore + errorScore * 10 + leftoverPenalty;
+
+            return { shifts: newShifts, leftover, score };
+        };
+
+        // --- Run iterative search ---
+        toast.info("🔄 Ricerca soluzione ottimale in corso...");
+
+        let bestResult = tryAssignment();
+        let bestScore = bestResult.score;
+
+        for (let i = 1; i < MAX_ATTEMPTS; i++) {
+            if (bestScore === 0) break; // Perfect solution found!
+
+            const candidate = tryAssignment();
+            if (candidate.score < bestScore) {
+                bestResult = candidate;
+                bestScore = candidate.score;
+            }
+        }
+
+        setShifts(bestResult.shifts);
+        setUnassignedClasses(bestResult.leftover);
+
+        if (bestScore === 0) {
+            toast.success(`✅ Soluzione perfetta trovata! Nessun conflitto.`);
+        } else {
+            const conflictsLeft = countConflicts(bestResult.shifts);
+            toast.warning(`⚠️ Miglior soluzione trovata dopo ${MAX_ATTEMPTS} tentativi. Conflitti rimasti: ${conflictsLeft}. Prova a rieseguire.`);
+        }
     };
 
     const handleCopyList = () => {

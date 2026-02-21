@@ -215,11 +215,11 @@ function smartSnakeFill(
                     if (result.length >= seatsNeeded) break;
                     result.push({ row, seat: s });
                 }
-                // Ended filling to the left, so next row starts from left
-                fillDirection = -1;
-            } else {
-                // Ended filling to the right, so next row starts from right
+                // Ended on the left side, so next row starts from left going RIGHT
                 fillDirection = 1;
+            } else {
+                // Ended on the right side, so next row starts from right going LEFT
+                fillDirection = -1;
             }
         } else {
             // Subsequent rows: fill in the current direction, then reverse if needed
