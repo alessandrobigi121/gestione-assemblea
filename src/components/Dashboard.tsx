@@ -45,6 +45,11 @@ export default function Dashboard() {
     const [showStatistics, setShowStatistics] = useState(false);
     const [maxCapacity, setMaxCapacity] = useState(499);
 
+    // Auto-Assign Progress State
+    const [isAssigning, setIsAssigning] = useState(false);
+    const [assignProgress, setAssignProgress] = useState(0);
+    const [assignBestConflicts, setAssignBestConflicts] = useState<number | null>(null);
+
     useEffect(() => {
         const saved = localStorage.getItem("assemblea_settings");
         if (saved) {
@@ -338,7 +343,7 @@ export default function Dashboard() {
         Object.values(shifts).forEach(list => allClasses.push(...list));
 
         const MAX_CAPACITY = maxCapacity;
-        const MAX_ATTEMPTS = 5000;
+        const MAX_ATTEMPTS = 200000;
 
         // Shuffle array helper
         const shuffle = <T,>(array: T[]): T[] => {
@@ -361,6 +366,11 @@ export default function Dashboard() {
             return cls.weekType?.toLowerCase().includes('corta') ?? false;
         };
 
+        // Check if class is in Borgo
+        const isBorgo = (cls: AssemblyEntry): boolean => {
+            return cls.location?.toLowerCase().includes('borgo') ?? false;
+        };
+
         // Only first 3 shifts for settimana lunga classes
         const shiftsForLunga = ["Primo turno", "Secondo turno", "Terzo turno"];
         const allShiftNames = ["Primo turno", "Secondo turno", "Terzo turno", "Quarto turno"];
@@ -373,6 +383,9 @@ export default function Dashboard() {
         const checkConstraint = (cls: AssemblyEntry, shift: string): boolean => {
             if (constraints[cls.classId]?.includes(shift)) return false;
             if (shift === "Quarto turno" && !isSettimanaCorta(cls)) return false;
+            // NOTE: We don't make Borgo in Primo Turno a hard 'false' here because it might be physically impossible
+            // to avoid it completely if capacity is extremely tight. Instead, we penalize it in the scoring phase.
+            // But we can lightly prefer avoiding it by removing it from valid random choices if space allows elsewhere.
             return true;
         };
 
@@ -399,6 +412,15 @@ export default function Dashboard() {
             return errors;
         };
 
+        // Count soft constraints violations (Borgo in Primo turno)
+        const countSoftViolations = (candidateShifts: { [key: string]: AssemblyEntry[] }): number => {
+            let violations = 0;
+            if (candidateShifts["Primo turno"]) {
+                violations += candidateShifts["Primo turno"].filter(c => isBorgo(c)).length;
+            }
+            return violations;
+        };
+
         // Single attempt: generate a random assignment
         const tryAssignment = (): { shifts: { [key: string]: AssemblyEntry[] }; leftover: AssemblyEntry[]; score: number } => {
             const newShifts: { [key: string]: AssemblyEntry[] } = {
@@ -408,31 +430,50 @@ export default function Dashboard() {
                 "Quarto turno": []
             };
 
-            const shuffledClasses = shuffle(allClasses);
+            const cortaClassesList = allClasses.filter(c => isSettimanaCorta(c));
+            const lungaClassesList = allClasses.filter(c => !isSettimanaCorta(c));
+
+            // Shuffle them independently, but we will process CORTA classes first
+            const shuffledCorta = shuffle(cortaClassesList);
+            const shuffledLunga = shuffle(lungaClassesList);
+            const prioritizedClasses = [...shuffledCorta, ...shuffledLunga];
+
             const leftover: AssemblyEntry[] = [];
 
-            shuffledClasses.forEach(cls => {
+            prioritizedClasses.forEach(cls => {
                 const year = getYear(cls.classId);
                 const canDoQuarto = isSettimanaCorta(cls);
                 let preferredOrder: string[];
 
-                if (year <= 2) {
-                    preferredOrder = Math.random() < 0.6
-                        ? ["Primo turno", "Secondo turno", "Terzo turno"]
-                        : ["Secondo turno", "Primo turno", "Terzo turno"];
-                    if (canDoQuarto) preferredOrder.push("Quarto turno");
-                } else if (year >= 4) {
-                    if (canDoQuarto) {
+                if (canDoQuarto) {
+                    // For Settimana Corta, Quarto Turno is always the absolute priority #1 to free up space
+                    const remainingShifts = shuffle(["Primo turno", "Secondo turno", "Terzo turno"]);
+                    preferredOrder = ["Quarto turno", ...remainingShifts];
+                } else {
+                    // Settimana Lunga
+                    if (year <= 2) {
                         preferredOrder = Math.random() < 0.6
-                            ? ["Quarto turno", "Terzo turno", "Secondo turno", "Primo turno"]
-                            : ["Terzo turno", "Quarto turno", "Secondo turno", "Primo turno"];
-                    } else {
+                            ? ["Primo turno", "Secondo turno", "Terzo turno"]
+                            : ["Secondo turno", "Primo turno", "Terzo turno"];
+                    } else if (year >= 4) {
                         preferredOrder = Math.random() < 0.6
                             ? ["Terzo turno", "Secondo turno", "Primo turno"]
                             : ["Secondo turno", "Terzo turno", "Primo turno"];
+                    } else {
+                        // year 3 random
+                        preferredOrder = shuffle(shiftsForLunga);
                     }
-                } else {
-                    preferredOrder = shuffle(canDoQuarto ? allShiftNames : shiftsForLunga);
+                }
+
+                // Push "Primo turno" to the back of preferredOrder if class is Borgo
+                if (isBorgo(cls)) {
+                    preferredOrder = preferredOrder.filter(s => s !== "Primo turno");
+                    preferredOrder.push("Primo turno"); // fallback only
+                }
+
+                // CRITICAL: Ensure manual constraints are strictly respected by fully removing forbidden shifts
+                if (constraints[cls.classId]) {
+                    preferredOrder = preferredOrder.filter(s => !constraints[cls.classId].includes(s));
                 }
 
                 // Find best shift considering preference and balance
@@ -462,37 +503,70 @@ export default function Dashboard() {
 
             const conflictScore = countConflicts(newShifts);
             const errorScore = countErrors(newShifts);
-            const leftoverPenalty = leftover.length * 100; // heavily penalize unassigned classes
-            const score = conflictScore + errorScore * 10 + leftoverPenalty;
+            const borgoViolationScore = countSoftViolations(newShifts) * 1000; // heavy penalty
+            const leftoverPenalty = leftover.length * 5000; // extremely heavy penalty
+            const score = conflictScore + (errorScore * 10) + borgoViolationScore + leftoverPenalty;
 
             return { shifts: newShifts, leftover, score };
         };
 
         // --- Run iterative search ---
-        toast.info("🔄 Ricerca soluzione ottimale in corso...");
+        setIsAssigning(true);
+        setAssignProgress(0);
+        setAssignBestConflicts(null);
 
         let bestResult = tryAssignment();
         let bestScore = bestResult.score;
+        setAssignBestConflicts(countConflicts(bestResult.shifts));
 
-        for (let i = 1; i < MAX_ATTEMPTS; i++) {
-            if (bestScore === 0) break; // Perfect solution found!
+        let currentIteration = 1;
+        const chunkSize = 1500; // Do 1500 attempts per tick
 
-            const candidate = tryAssignment();
-            if (candidate.score < bestScore) {
-                bestResult = candidate;
-                bestScore = candidate.score;
+        const processChunk = () => {
+            let chunkRemaining = chunkSize;
+            while (chunkRemaining > 0 && currentIteration <= MAX_ATTEMPTS) {
+                if (bestScore === 0) break; // Perfect solution found!
+
+                const candidate = tryAssignment();
+                if (candidate.score < bestScore) {
+                    bestResult = candidate;
+                    bestScore = candidate.score;
+                    setAssignBestConflicts(countConflicts(bestResult.shifts));
+                }
+
+                currentIteration++;
+                chunkRemaining--;
             }
-        }
 
-        setShifts(bestResult.shifts);
-        setUnassignedClasses(bestResult.leftover);
+            // Update progress
+            const progress = Math.min(100, Math.floor((currentIteration / MAX_ATTEMPTS) * 100));
+            setAssignProgress(progress);
 
-        if (bestScore === 0) {
-            toast.success(`✅ Soluzione perfetta trovata! Nessun conflitto.`);
-        } else {
-            const conflictsLeft = countConflicts(bestResult.shifts);
-            toast.warning(`⚠️ Miglior soluzione trovata dopo ${MAX_ATTEMPTS} tentativi. Conflitti rimasti: ${conflictsLeft}. Prova a rieseguire.`);
-        }
+            if (bestScore === 0 || currentIteration > MAX_ATTEMPTS) {
+                // Done
+                setShifts(bestResult.shifts);
+                setUnassignedClasses(bestResult.leftover);
+                setIsAssigning(false);
+
+                if (bestScore === 0) {
+                    toast.success(`✅ Perfetto! Zero Conflitti e no Borgo al Primo Turno. (${currentIteration - 1} iterazioni)`);
+                } else {
+                    const conflictsLeft = countConflicts(bestResult.shifts);
+                    const borgoLeft = countSoftViolations(bestResult.shifts);
+                    if (borgoLeft > 0) {
+                        toast.warning(`⚠️ Trovato compromesso. Conflitti: ${conflictsLeft}. Classi Borgo in Primo Turno: ${borgoLeft}.`);
+                    } else {
+                        toast.warning(`⚠️ Miglior soluzione in ${MAX_ATTEMPTS} tentativi. Conflitti rimasti: ${conflictsLeft}.`);
+                    }
+                }
+            } else {
+                // Queue next chunk
+                setTimeout(processChunk, 1);
+            }
+        };
+
+        // Start first chunk
+        setTimeout(processChunk, 50);
     };
 
     const handleCopyList = () => {
@@ -516,6 +590,61 @@ export default function Dashboard() {
 
     return (
         <div className="container" style={{ maxWidth: '100%', paddingBottom: showUnassigned ? '280px' : '2rem' }}>
+            {isAssigning && (
+                <div style={{
+                    position: 'fixed',
+                    top: 0, left: 0, right: 0, bottom: 0,
+                    backgroundColor: 'rgba(15, 23, 42, 0.8)',
+                    backdropFilter: 'blur(8px)',
+                    zIndex: 9999,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                }}>
+                    <div className="glass-panel" style={{
+                        maxWidth: '400px',
+                        width: '90%',
+                        padding: '2rem',
+                        textAlign: 'center',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '1.5rem'
+                    }}>
+                        <h2 style={{ fontSize: '1.5rem', fontWeight: 600, margin: 0 }}>
+                            Ricerca Ottimizzazione Turni
+                        </h2>
+                        <p style={{ opacity: 0.8, fontSize: '0.9rem', margin: 0 }}>
+                            Analisi fino a 200.000 combinazioni per azzerare i conflitti docenti e rispettare i vincoli...
+                        </p>
+
+                        <div style={{
+                            width: '100%',
+                            height: '12px',
+                            background: 'rgba(0,0,0,0.3)',
+                            borderRadius: '999px',
+                            overflow: 'hidden',
+                            position: 'relative'
+                        }}>
+                            <div style={{
+                                position: 'absolute',
+                                left: 0, top: 0, bottom: 0,
+                                width: `${assignProgress}%`,
+                                background: 'linear-gradient(90deg, #6366f1, #a855f7)',
+                                transition: 'width 0.1s linear'
+                            }} />
+                        </div>
+
+                        <div className="flex-row justify-between" style={{ fontSize: '0.85rem', fontWeight: 600 }}>
+                            <span>{assignProgress}%</span>
+                            <span style={{ color: assignBestConflicts === 0 ? '#4ade80' : '#facc15' }}>
+                                Miglior risultato finora: {assignBestConflicts ?? '?'} conflitti
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <StatsHeader
                 selectedDay={selectedDay}
                 showUnassigned={showUnassigned}

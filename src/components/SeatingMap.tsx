@@ -187,62 +187,62 @@ function smartSnakeFill(
     if (rowStartIdx === -1) return [];
     const orderedRows = block.rows.slice(rowStartIdx);
 
-    // Direction: +1 means fill towards higher seat numbers (right), -1 means left
-    let fillDirection: 1 | -1 = 1; // start filling to the right
+    let lastSeatAssigned: number | null = null;
 
     for (const row of orderedRows) {
         if (result.length >= seatsNeeded) break;
 
-        // Get available seats in this row for this side, sorted ascending
+        // Get available seats in this row for this side
         const availableSeats = SEATS_CONFIG[row][side]
-            .filter(s => !occupied.has(`${row}-${s}`))
-            .sort((a, b) => a - b);
+            .filter(s => !occupied.has(`${row}-${s}`));
 
         if (availableSeats.length === 0) continue;
 
+        let sorted: number[];
+
         if (row === startRow) {
-            // First row: start from startSeat, fill right first, then left
+            // First row: start exactly from startSeat, fill right first, then left
             const rightSeats = availableSeats.filter(s => s >= startSeat).sort((a, b) => a - b);
             const leftSeats = availableSeats.filter(s => s < startSeat).sort((a, b) => b - a); // descending
 
             for (const s of rightSeats) {
                 if (result.length >= seatsNeeded) break;
                 result.push({ row, seat: s });
+                lastSeatAssigned = s;
             }
 
             if (result.length < seatsNeeded) {
                 for (const s of leftSeats) {
                     if (result.length >= seatsNeeded) break;
                     result.push({ row, seat: s });
+                    lastSeatAssigned = s;
                 }
-                // Ended on the left side, so next row starts from left going RIGHT
-                fillDirection = 1;
-            } else {
-                // Ended on the right side, so next row starts from right going LEFT
-                fillDirection = -1;
             }
         } else {
-            // Subsequent rows: fill in the current direction, then reverse if needed
-            let sorted: number[];
-            if (fillDirection === 1) {
-                // Fill left to right (ascending)
-                sorted = [...availableSeats].sort((a, b) => a - b);
-            } else {
-                // Fill right to left (descending)
+            // Subsequent rows: depend on where we ended up in the PREVIOUS row
+            // If the last seat was on the right side of our block (higher number),
+            // the new row must start from the right and move left (descending).
+            // If the last seat was on the left side (lower number),
+            // the new row must start from the left and move right (ascending).
+
+            // Let's find the median seat number of this block's side to know where we are.
+            const minSeat = SEATS_CONFIG[row][side][0];
+            const maxSeat = SEATS_CONFIG[row][side][SEATS_CONFIG[row][side].length - 1];
+            const midPoint = (minSeat + maxSeat) / 2;
+
+            if (lastSeatAssigned !== null && lastSeatAssigned >= midPoint) {
+                // We ended on the RIGHT side. So start from right, move left.
                 sorted = [...availableSeats].sort((a, b) => b - a);
+            } else {
+                // We ended on the LEFT side. So start from left, move right.
+                sorted = [...availableSeats].sort((a, b) => a - b);
             }
 
-            const countBefore = result.length;
             for (const s of sorted) {
                 if (result.length >= seatsNeeded) break;
                 result.push({ row, seat: s });
+                lastSeatAssigned = s;
             }
-
-            // If we used all seats in this row, flip direction for next row (snake)
-            if (result.length - countBefore === availableSeats.length) {
-                fillDirection = fillDirection === 1 ? -1 : 1;
-            }
-            // If we didn't use all seats, direction stays the same (we finished)
         }
     }
 
