@@ -164,8 +164,10 @@ function findBlockAndSide(row: string, seat: number): { blockIdx: number; side: 
     return null;
 }
 
-// Smart Fill: Starting from a seat, fill N seats within the same block/side
-function smartFill(
+// Smart Snake Fill: Starting from a seat, fill N seats using a snake pattern.
+// First fills right in the current row, then left if needed, then moves to the
+// next row starting from the same side where the previous row ended.
+function smartSnakeFill(
     startRow: string,
     startSeat: number,
     seatsNeeded: number,
@@ -174,18 +176,77 @@ function smartFill(
     const location = findBlockAndSide(startRow, startSeat);
     if (!location) return [];
 
+    const block = BLOCKS[location.blockIdx];
+    const side = location.side;
     const occupied = new Set(currentAssignments.map(a => `${a.row}-${a.seat}`));
-    const blockSeats = getBlockSeats(location.blockIdx, location.side, occupied);
 
-    // Find where our start seat is in the sequence
-    const startIdx = blockSeats.findIndex(s => s.row === startRow && s.seat === startSeat);
-    if (startIdx === -1) {
-        // Start seat is already occupied, just take first available
-        return blockSeats.slice(0, seatsNeeded);
+    const result: { row: string; seat: number }[] = [];
+
+    // Get the rows of the block in order, starting from the startRow
+    const rowStartIdx = block.rows.indexOf(startRow);
+    if (rowStartIdx === -1) return [];
+    const orderedRows = block.rows.slice(rowStartIdx);
+
+    // Direction: +1 means fill towards higher seat numbers (right), -1 means left
+    let fillDirection: 1 | -1 = 1; // start filling to the right
+
+    for (const row of orderedRows) {
+        if (result.length >= seatsNeeded) break;
+
+        // Get available seats in this row for this side, sorted ascending
+        const availableSeats = SEATS_CONFIG[row][side]
+            .filter(s => !occupied.has(`${row}-${s}`))
+            .sort((a, b) => a - b);
+
+        if (availableSeats.length === 0) continue;
+
+        if (row === startRow) {
+            // First row: start from startSeat, fill right first, then left
+            const rightSeats = availableSeats.filter(s => s >= startSeat).sort((a, b) => a - b);
+            const leftSeats = availableSeats.filter(s => s < startSeat).sort((a, b) => b - a); // descending
+
+            for (const s of rightSeats) {
+                if (result.length >= seatsNeeded) break;
+                result.push({ row, seat: s });
+            }
+
+            if (result.length < seatsNeeded) {
+                for (const s of leftSeats) {
+                    if (result.length >= seatsNeeded) break;
+                    result.push({ row, seat: s });
+                }
+                // Ended filling to the left, so next row starts from left
+                fillDirection = -1;
+            } else {
+                // Ended filling to the right, so next row starts from right
+                fillDirection = 1;
+            }
+        } else {
+            // Subsequent rows: fill in the current direction, then reverse if needed
+            let sorted: number[];
+            if (fillDirection === 1) {
+                // Fill left to right (ascending)
+                sorted = [...availableSeats].sort((a, b) => a - b);
+            } else {
+                // Fill right to left (descending)
+                sorted = [...availableSeats].sort((a, b) => b - a);
+            }
+
+            const countBefore = result.length;
+            for (const s of sorted) {
+                if (result.length >= seatsNeeded) break;
+                result.push({ row, seat: s });
+            }
+
+            // If we used all seats in this row, flip direction for next row (snake)
+            if (result.length - countBefore === availableSeats.length) {
+                fillDirection = fillDirection === 1 ? -1 : 1;
+            }
+            // If we didn't use all seats, direction stays the same (we finished)
+        }
     }
 
-    // Take seats starting from startIdx
-    return blockSeats.slice(startIdx, startIdx + seatsNeeded);
+    return result.slice(0, seatsNeeded);
 }
 
 export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMapProps) {
@@ -419,7 +480,7 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
         if (!cls) return;
 
         const seatsNeeded = cls.students + 1;
-        const seatsToAssign = smartFill(row, seat, seatsNeeded, assignments);
+        const seatsToAssign = smartSnakeFill(row, seat, seatsNeeded, assignments);
 
         if (seatsToAssign.length === 0) {
             console.warn("No available seats in this block/side");
@@ -544,7 +605,12 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
                 if (pathElement) {
                     const currentStyle = pathElement.getAttribute("style") || "";
                     let newStyle = currentStyle.replace(/fill:[^;]+;?/g, "");
-                    newStyle += `fill:${color};`;
+                    // Ensure transparent fills still capture pointer events
+                    if (color === 'transparent') {
+                        newStyle += `fill:transparent;pointer-events:all;`;
+                    } else {
+                        newStyle += `fill:${color};pointer-events:all;`;
+                    }
 
                     // Highlight drop target
                     if (dropTargetSeat && dropTargetSeat.row === row && dropTargetSeat.seat === seatNum) {
@@ -552,7 +618,7 @@ export default function SeatingMap({ shifts, initialShift, onClose }: SeatingMap
                     } else if (isEditMode && selectedSeat && selectedSeat.row === row && selectedSeat.seat === seatNum) {
                         newStyle += "stroke:black;stroke-width:2px;";
                     } else if (isEditMode || draggingClass) {
-                        newStyle += "cursor:pointer;pointer-events:all;";
+                        newStyle += "cursor:pointer;";
                     }
 
                     pathElement.setAttribute("style", newStyle);

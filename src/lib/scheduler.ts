@@ -90,7 +90,7 @@ export class AssemblyManager {
         return errors;
     }
 
-    // Updated Conflict Logic: Check specifically Ritorno(Shift N) vs Andata(Shift N+1)
+    // Updated Conflict Logic: Check Ritorno(N) vs Andata(N+1), Andata(N) vs Andata(N+1), Ritorno(N) vs Ritorno(N+1)
     getTeacherConflicts(day: string, shifts: { [key: string]: string[] }): { [classId: string]: string[] } {
         const conflictMap: { [classId: string]: string[] } = {};
         const shiftNames = Object.keys(shifts); // Assumes order: Primo, Secondo, Terzo, Quarto
@@ -98,7 +98,10 @@ export class AssemblyManager {
         // Helper to register conflict
         const addConflict = (id: string, msg: string) => {
             if (!conflictMap[id]) conflictMap[id] = [];
-            conflictMap[id].push(msg);
+            // Avoid duplicate messages
+            if (!conflictMap[id].includes(msg)) {
+                conflictMap[id].push(msg);
+            }
         };
 
         for (let i = 0; i < shiftNames.length - 1; i++) {
@@ -108,44 +111,85 @@ export class AssemblyManager {
             const classesCurrent = shifts[currentShift];
             const classesNext = shifts[nextShift];
 
-            // Build Maps: Teacher -> ClassIds[]
-            const returningTeachers: { [teacher: string]: string[] } = {};
-            const goingTeachers: { [teacher: string]: string[] } = {};
+            // Build Maps for Current Shift: Teacher -> ClassIds[]
+            const goingCurrent: { [teacher: string]: string[] } = {};
+            const returningCurrent: { [teacher: string]: string[] } = {};
 
-            // 1. Get Returning teachers from Current Shift
             classesCurrent.forEach(cId => {
                 const teachers = this.getShiftTeachers(currentShift, cId, day);
+                teachers.going.forEach(t => {
+                    if (t && t !== 'Non trovato') {
+                        if (!goingCurrent[t]) goingCurrent[t] = [];
+                        goingCurrent[t].push(cId);
+                    }
+                });
                 teachers.returning.forEach(t => {
                     if (t && t !== 'Non trovato') {
-                        if (!returningTeachers[t]) returningTeachers[t] = [];
-                        returningTeachers[t].push(cId);
+                        if (!returningCurrent[t]) returningCurrent[t] = [];
+                        returningCurrent[t].push(cId);
                     }
                 });
             });
 
-            // 2. Get Going teachers from Next Shift
+            // Build Maps for Next Shift: Teacher -> ClassIds[]
+            const goingNext: { [teacher: string]: string[] } = {};
+            const returningNext: { [teacher: string]: string[] } = {};
+
             classesNext.forEach(cId => {
                 const teachers = this.getShiftTeachers(nextShift, cId, day);
                 teachers.going.forEach(t => {
                     if (t && t !== 'Non trovato') {
-                        if (!goingTeachers[t]) goingTeachers[t] = [];
-                        goingTeachers[t].push(cId);
+                        if (!goingNext[t]) goingNext[t] = [];
+                        goingNext[t].push(cId);
+                    }
+                });
+                teachers.returning.forEach(t => {
+                    if (t && t !== 'Non trovato') {
+                        if (!returningNext[t]) returningNext[t] = [];
+                        returningNext[t].push(cId);
                     }
                 });
             });
 
-            // 3. Find Intersections
-            const commonTeachers = Object.keys(returningTeachers).filter(t => goingTeachers[t]);
-
-            commonTeachers.forEach(t => {
-                const prevClasses = returningTeachers[t];
-                const nextClasses = goingTeachers[t];
-
-                // Cross-reference conflicts
+            // --- CHECK 1: Ritorno(N) vs Andata(N+1) (original check) ---
+            const crossConflicts = Object.keys(returningCurrent).filter(t => goingNext[t]);
+            crossConflicts.forEach(t => {
+                const prevClasses = returningCurrent[t];
+                const nextClasses = goingNext[t];
                 prevClasses.forEach(p => {
                     nextClasses.forEach(n => {
                         addConflict(p, `Conflitto con ${n} (${t})`);
                         addConflict(n, `Conflitto con ${p} (${t})`);
+                    });
+                });
+            });
+
+            // --- CHECK 2: Andata(N) vs Andata(N+1) for DIFFERENT classes ---
+            const goGoConflicts = Object.keys(goingCurrent).filter(t => goingNext[t]);
+            goGoConflicts.forEach(t => {
+                const currClasses = goingCurrent[t];
+                const nextClasses = goingNext[t];
+                currClasses.forEach(c => {
+                    nextClasses.forEach(n => {
+                        if (c !== n) {
+                            addConflict(c, `Doppia Andata consecutiva (${t}) con ${n}`);
+                            addConflict(n, `Doppia Andata consecutiva (${t}) con ${c}`);
+                        }
+                    });
+                });
+            });
+
+            // --- CHECK 3: Ritorno(N) vs Ritorno(N+1) for DIFFERENT classes ---
+            const retRetConflicts = Object.keys(returningCurrent).filter(t => returningNext[t]);
+            retRetConflicts.forEach(t => {
+                const currClasses = returningCurrent[t];
+                const nextClasses = returningNext[t];
+                currClasses.forEach(c => {
+                    nextClasses.forEach(n => {
+                        if (c !== n) {
+                            addConflict(c, `Doppio Ritorno consecutivo (${t}) con ${n}`);
+                            addConflict(n, `Doppio Ritorno consecutivo (${t}) con ${c}`);
+                        }
                     });
                 });
             });
