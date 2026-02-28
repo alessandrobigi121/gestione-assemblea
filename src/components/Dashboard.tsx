@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import dynamic from "next/dynamic";
 import { AssemblyManager } from "@/lib/scheduler";
 import { AssemblyEntry } from "@/lib/parsers";
@@ -24,6 +24,7 @@ interface HistoryState {
 
 export default function Dashboard() {
     const [manager] = useState(new AssemblyManager());
+    const seenConfigurations = useRef<Set<string>>(new Set());
     const [loading, setLoading] = useState(true);
     const [selectedDay, setSelectedDay] = useState("Mercoledì");
     const [shifts, setShifts] = useState<{ [key: string]: AssemblyEntry[] }>({
@@ -289,6 +290,7 @@ export default function Dashboard() {
             "Terzo turno": [],
             "Quarto turno": [],
         });
+        seenConfigurations.current.clear();
         toast.info("Reset completato");
     };
 
@@ -515,9 +517,23 @@ export default function Dashboard() {
         setAssignProgress(0);
         setAssignBestConflicts(null);
 
-        let bestResult = tryAssignment();
+        // Compute base score of current dashboard
+        const currentScore = countConflicts(shifts) + (countErrors(shifts) * 10) + (countSoftViolations(shifts) * 1000) + (unassignedClasses.length * 5000);
+
+        let bestResult = { shifts: JSON.parse(JSON.stringify(shifts)), leftover: [...unassignedClasses], score: currentScore };
         let bestScore = bestResult.score;
         setAssignBestConflicts(countConflicts(bestResult.shifts));
+
+        // Generate hash of a configuration
+        const generateHash = (configShifts: { [key: string]: AssemblyEntry[] }) => {
+            const parts: string[] = [];
+            ["Primo turno", "Secondo turno", "Terzo turno", "Quarto turno"].forEach(s => {
+                parts.push(configShifts[s].map(c => c.classId).sort().join(','));
+            });
+            return parts.join('|');
+        };
+
+        seenConfigurations.current.add(generateHash(bestResult.shifts));
 
         let currentIteration = 1;
         const chunkSize = 1500; // Do 1500 attempts per tick
@@ -528,6 +544,15 @@ export default function Dashboard() {
                 if (bestScore === 0) break; // Perfect solution found!
 
                 const candidate = tryAssignment();
+                const hash = generateHash(candidate.shifts);
+
+                if (seenConfigurations.current.has(hash)) {
+                    currentIteration++;
+                    chunkRemaining--;
+                    continue;
+                }
+                seenConfigurations.current.add(hash);
+
                 if (candidate.score < bestScore) {
                     bestResult = candidate;
                     bestScore = candidate.score;
